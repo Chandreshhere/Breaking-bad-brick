@@ -99,8 +99,12 @@ export class Game {
   private spectacleTargets: SpectacleTargets = { weather: 0.35, music: 0.35, visual: 0.35 };
   /** Set by Experience — the world performs its signature clear reaction. */
   onLevelSignature: (() => void) | null = null;
-  private levelStartAt = 0;
+  /** Seconds actually spent in the 'playing' state this level — the CLEAR
+   * TIME stat must not count menus, countdowns, pauses, or cinematics. */
+  private playSeconds = 0;
   private livesLostThisLevel = 0;
+  /** A settings/map overlay is open — global keys must not resume play. */
+  private overlayOpen = false;
   private clearLabelShown = false;
   private clearSignatureFired = false;
   /** Set by Experience — biome/weather swap on level change. */
@@ -143,7 +147,6 @@ export class Game {
     hud.setLevel(this.levels.level);
     this.difficulty.onLevelStart(objects.brickField?.aliveCount() ?? 1);
     this.spectacleTargets = this.spectacle.targetsForLevel(this.levels.level);
-    this.levelStartAt = performance.now();
     this.syncHud();
     if (silent) {
       this.startCountdown();
@@ -281,16 +284,19 @@ export class Game {
   /** Arena picker; picking applies the world immediately as a live preview. */
   private openMapSelect(onBack: () => void): void {
     this.audio.click();
+    this.overlayOpen = true;
     this.screens.showMapSelect({
       current: this.selectedMap,
       onPick: (key): void => {
         this.audio.powerup();
+        this.overlayOpen = false;
         this.selectedMap = key;
         this.onMapSelected?.(key as BiomeName | null);
         onBack();
       },
       onBack: (): void => {
         this.audio.click();
+        this.overlayOpen = false;
         onBack();
       },
     });
@@ -299,6 +305,7 @@ export class Game {
   /** Settings overlay; `onBack` restores whichever screen invoked it. */
   private openSettings(onBack: () => void): void {
     this.audio.click();
+    this.overlayOpen = true;
     const cfg = this.cfg;
     this.screens.showSettings({
       values: {
@@ -311,6 +318,7 @@ export class Game {
       onChange: (key, value): void => this.onSettingChanged?.(key, value),
       onBack: (): void => {
         this.audio.click();
+        this.overlayOpen = false;
         onBack();
       },
       onOpenDevTools: this.onOpenDevTools,
@@ -342,6 +350,7 @@ export class Game {
   }
 
   private onPrimary = (): void => {
+    if (this.overlayOpen) return; // Space inside settings must not resume
     if (this.state === 'countdown' && this.silent) {
       this.serve();
     } else if (this.state === 'paused') {
@@ -352,16 +361,37 @@ export class Game {
   };
 
   togglePause(): void {
+    if (this.overlayOpen) return; // Escape/p inside settings must not resume
     if (this.state === 'playing') {
       this.audio.click();
       this.setState('paused');
-      this.screens.showPause(
-        () => this.resume(),
-        () => this.openSettings(() => this.screens.showPause(() => this.resume()))
-      );
+      this.showPauseScreen();
     } else if (this.state === 'paused') {
       this.resume();
     }
+  }
+
+  /** One wiring for the pause screen — settings BACK returns here intact. */
+  private showPauseScreen(): void {
+    this.screens.showPause(
+      () => this.resume(),
+      () => this.openSettings(() => this.showPauseScreen()),
+      () => this.returnToMenu()
+    );
+  }
+
+  /** Abandon the run and return to the intro menu, fully reset. */
+  private returnToMenu(): void {
+    this.audio.click();
+    this.setState('intro'); // before the rebuild so no countdown auto-starts
+    this.levels.setLevel(1);
+    this.lives = this.cfg.game.rules.lives;
+    this.score = 0;
+    this.onLevelChanged?.(this.levels.level); // restore the level-1 arena
+    this.rebuildObjects();
+    this.handleRebuild();
+    this.hud.setLevel(this.levels.level);
+    this.enterIntro();
   }
 
   private resume(): void {
@@ -496,14 +526,21 @@ export class Game {
     this.setState('gameOver');
     this.audio.gameOver();
     if (!this.silent) {
-      this.screens.showResults('GAME OVER', this.score, () => this.restart(false), 'REPLAY');
+      this.screens.showResults(
+        'GAME OVER',
+        this.score,
+        () => this.restart(false),
+        'REPLAY',
+        [],
+        () => this.returnToMenu()
+      );
     }
   }
 
   /** levelClear cinematic finished — show the animated results screen. */
   private finishLevelClear(): void {
     this.setState('win');
-    const clearSeconds = (performance.now() - this.levelStartAt) / 1000;
+    const clearSeconds = this.playSeconds;
     const noMiss = this.livesLostThisLevel === 0;
     if (noMiss) this.score += 500;
     const stats: { label: string; value: string }[] = [
@@ -519,7 +556,8 @@ export class Game {
         this.score,
         () => this.restart(true),
         'NEXT LEVEL',
-        stats
+        stats,
+        () => this.returnToMenu()
       );
     }
   }
@@ -535,7 +573,7 @@ export class Game {
     this.hud.setCombo(0, 1, '#f3efe2', false);
     this.difficulty.onLevelStart(this.objects.brickField?.aliveCount() ?? 1);
     this.spectacleTargets = this.spectacle.targetsForLevel(this.levels.level);
-    this.levelStartAt = performance.now();
+    this.playSeconds = 0;
     this.livesLostThisLevel = 0;
     this.stunTimer = 0;
     this.bossAttackMode = 'idle';
@@ -576,6 +614,7 @@ export class Game {
   update(dt: number): void {
     if (this.state === 'paused') return;
     this.stateTimer += dt;
+    if (this.state === 'playing') this.playSeconds += dt;
 
     // Hitstop/slow-mo live in the GameFeelManager; cinematic staging
     // (stateTimer, countdowns) runs in real time.

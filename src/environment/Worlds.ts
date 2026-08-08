@@ -48,7 +48,9 @@ export function buildLotusWorld(_cfg: VisualConfig): THREE.Group {
       const petal = new THREE.Mesh(geometry, petalMaterial);
       const angle = (i / count) * Math.PI * 2;
       petal.rotation.x = -Math.PI / 2;
-      petal.rotation.z = angle;
+      // XYZ euler order: -angle makes the tip direction (+sin, -cos) match
+      // the radial base placement below — +angle mirrors petals across X.
+      petal.rotation.z = -angle;
       petal.position.set(Math.sin(angle) * radius * 0.3, 0.02, -1 - Math.cos(angle) * radius * 0.3);
       lotus.add(petal);
     }

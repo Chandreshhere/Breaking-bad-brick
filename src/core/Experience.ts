@@ -67,6 +67,8 @@ export class Experience {
   readonly wetSurface = new WetSurfaceController();
   readonly loop: Game;
   private weatherBase = 0;
+  /** The one debug GUI instance — shared by ?debug=1 and Settings→Developer. */
+  private debugGui: ReturnType<typeof createDebugGui> | null = null;
   private readonly clock = new THREE.Clock();
   private readonly shakeQuat = new THREE.Quaternion();
   private controls: OrbitControls | null = null;
@@ -227,12 +229,8 @@ export class Experience {
       }
     };
     if (import.meta.env.DEV) {
-      let devGuiOpen = false;
       this.loop.onOpenDevTools = (): void => {
-        if (!devGuiOpen) {
-          devGuiOpen = true;
-          createDebugGui(this);
-        }
+        if (!this.debugGui) this.debugGui = createDebugGui(this);
       };
     }
     this.audio.setSfxVolume(this.cfg.audioSettings.sfxVolume);
@@ -243,7 +241,8 @@ export class Experience {
 
     // Phase 29: the debug panel no longer renders during normal play —
     // it lives behind Settings → Developer (dev builds), or ?debug=1.
-    if (!isShot && params.get('debug') === '1') createDebugGui(this);
+    // One shared instance: ?debug=1 + Settings→Developer must not stack two.
+    if (!isShot && params.get('debug') === '1') this.debugGui = createDebugGui(this);
 
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.onKeyDown);
@@ -267,6 +266,9 @@ export class Experience {
 
   rebuildStadium(): void {
     this.stadium.build();
+    // The clay material is recreated by every build — re-attach or the
+    // wet-surface controller keeps driving the disposed one.
+    this.wetSurface.attach(this.stadium.clayMaterial);
   }
 
   rebuildGame(): void {
@@ -379,6 +381,8 @@ export class Experience {
     this.music.dispose();
     this.audio.dispose();
     this.controls?.dispose();
+    this.debugGui?.destroy();
+    this.debugGui = null;
     this.game.dispose();
     this.stadium.dispose();
     this.post.dispose();

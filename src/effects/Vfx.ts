@@ -261,5 +261,11 @@ export class Vfx {
 
   dispose(): void {
     this.particles.dispose();
+    for (const word of this.comicWords) {
+      this.group.remove(word.sprite);
+      (word.sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    this.comicWords.length = 0;
+    for (const texture of this.comicTextures) texture.dispose();
   }
 }

@@ -85,5 +85,7 @@ export class ComboManager {
     this.combo = 0;
     this.comboTimer = 0;
     this.overdriveTimer = 0;
+    // Per-level stat — the results screen must never show a dead run's max.
+    this.highestCombo = 0;
   }
 }

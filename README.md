@@ -246,6 +246,13 @@ Arcade roadmap 25–34 in progress:
   count-up and cascading stats: CLEAR TIME, MAX COMBO, and a +500
   NO-MISS BONUS for deathless clears.
 
+- ✅ **Arena select**: the intro menu's ARENA button opens a picker with
+  all six worlds (plus AUTO CYCLE, the default 3-level rotation).
+  Picking one locks every level to that world — applied instantly as a
+  live preview behind the menu. HUD announcements (waves, combo tiers,
+  power-ups) now play through a single-slot queue with a minimum read
+  time, so rapid events never overlap on screen.
+
 **All phases 1–34 complete.** A final 12-agent adversarial review of the
 arcade expansion confirmed and fixed six bugs pre-release: a field-clear
 softlock via stale pending kills, dying-brick animations corrupting the

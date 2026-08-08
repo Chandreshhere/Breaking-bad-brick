@@ -46,7 +46,10 @@ const CSS = /* css */ `
 .acb-ring svg { width: 46%; height: 46%; }
 .acb-bonus-label { font-size: clamp(11px, 1.1vw, 16px); letter-spacing: 0.14em; color: #f2edda; }
 .acb-center { position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 28px; text-align: center; }
+  align-items: center; justify-content: center; gap: 28px; text-align: center;
+  /* Full-screen flex box: let empty space pass clicks to siblings (gear). */
+  pointer-events: none; }
+.acb-center > * { pointer-events: auto; }
 .acb-results-title { font-size: clamp(40px, 6vw, 80px); font-weight: 700;
   letter-spacing: 0.12em; color: #f2edda; }
 .acb-results-score { font-size: clamp(48px, 7vw, 96px); font-weight: 700; color: #efd42e; }
@@ -98,6 +101,8 @@ const CSS = /* css */ `
   letter-spacing: 0.14em; }
 .acb-map-sub { color: rgba(242,237,218,0.6); font-size: clamp(10px, 1vw, 13px);
   letter-spacing: 0.2em; }
+.acb-version { position: absolute; left: 26px; bottom: 20px; font-size: 11px;
+  letter-spacing: 0.22em; color: rgba(242,237,218,0.45); pointer-events: none; }
 `;
 
 /** Menu arena catalogue — key null is the automatic 3-level cycle. */
@@ -152,8 +157,21 @@ export class Screens {
     container.appendChild(this.root);
   }
 
+  /** App version from /version.json — stamped onto every menu screen. */
+  private version: string | null = null;
+
+  setVersion(version: string): void {
+    this.version = version;
+    if (this.current && !this.current.querySelector('.acb-version')) {
+      this.current.insertAdjacentHTML('beforeend', `<div class="acb-version">v${version}</div>`);
+    }
+  }
+
   private show(el: HTMLDivElement): void {
     this.hideAll();
+    if (this.version) {
+      el.insertAdjacentHTML('beforeend', `<div class="acb-version">v${this.version}</div>`);
+    }
     this.root.appendChild(el);
     this.current = el;
   }
@@ -174,7 +192,7 @@ export class Screens {
       <div class="acb-wordmark">ACE BREAKER</div>
       <button class="acb-gear" data-action="settings" title="Settings">⚙</button>
       <div class="acb-title-block">
-        <div class="acb-title-serif">CLAY COURT</div>
+        <div class="acb-title-serif">${arena && arena.label !== 'AUTO CYCLE' ? arena.label : 'CLAY COURT'}</div>
         <div class="acb-title-main">ACE BREAKER</div>
       </div>
       <div class="acb-divider"></div>
@@ -308,7 +326,8 @@ export class Screens {
     score: number,
     onReplay: () => void,
     buttonLabel = 'REPLAY',
-    stats: { label: string; value: string }[] = []
+    stats: { label: string; value: string }[] = [],
+    onMainMenu?: () => void
   ): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
@@ -328,8 +347,11 @@ export class Screens {
         <div class="acb-results-score">0</div>
         ${statLines ? `<div class="acb-stats">${statLines}</div>` : ''}
         <button class="acb-pill" data-action="replay">${BALL_SVG}${buttonLabel}</button>
+        ${onMainMenu ? '<button class="acb-pill acb-pill-ghost" data-action="menu">MAIN MENU</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="replay"]')!.onclick = onReplay;
+    const menu = el.querySelector<HTMLButtonElement>('[data-action="menu"]');
+    if (menu && onMainMenu) menu.onclick = onMainMenu;
     this.show(el);
 
     // Score counts up rapidly — the payoff moment.
@@ -345,7 +367,7 @@ export class Screens {
     requestAnimationFrame(count);
   }
 
-  showPause(onResume: () => void, onSettings?: () => void): void {
+  showPause(onResume: () => void, onSettings?: () => void, onMainMenu?: () => void): void {
     const el = document.createElement('div');
     el.className = 'acb-screen acb-pause';
     el.innerHTML = `
@@ -354,10 +376,13 @@ export class Screens {
       <div class="acb-center">
         <div class="acb-results-title">PAUSED</div>
         <button class="acb-pill" data-action="resume">${BALL_SVG}RESUME</button>
+        ${onMainMenu ? '<button class="acb-pill acb-pill-ghost" data-action="menu">MAIN MENU</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="resume"]')!.onclick = onResume;
     const gear = el.querySelector<HTMLButtonElement>('[data-action="settings"]');
     if (gear && onSettings) gear.onclick = onSettings;
+    const menu = el.querySelector<HTMLButtonElement>('[data-action="menu"]');
+    if (menu && onMainMenu) menu.onclick = onMainMenu;
     this.show(el);
   }
 

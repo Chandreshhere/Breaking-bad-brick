@@ -1,0 +1,7 @@
+{
+  "name": "ACE BREAKER",
+  "version": "1.0.0",
+  "phases": 34,
+  "worlds": ["CLAY", "NEON", "HELL", "LOTUS_OS", "NEON_ARCADE", "COMIC_IMPACT"],
+  "built": "2026-08-08"
+}
