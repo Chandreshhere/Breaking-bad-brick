@@ -35,6 +35,16 @@ export class LightingDirector {
   readonly hemi: THREE.HemisphereLight;
   readonly gameplaySpot: THREE.SpotLight;
 
+  /** Quality-tier shadow control: 0 disables the sun's shadow entirely. */
+  setShadowMapSize(size: number): void {
+    this.sun.castShadow = size > 0;
+    if (size > 0 && this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.map?.dispose(); // realloc at the new size next frame
+      this.sun.shadow.map = null;
+    }
+  }
+
   constructor(scene: THREE.Scene, cfg: VisualConfig, shadowMapSize = 2048) {
     this.sun = new THREE.DirectionalLight();
     this.sun.castShadow = true;

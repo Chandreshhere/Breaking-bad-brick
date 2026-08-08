@@ -25,6 +25,13 @@ import { Hud } from '../ui/Hud';
 import { Screens } from '../ui/Screens';
 import { CameraRig } from './CameraRig';
 import { createDebugGui } from './DebugGui';
+import {
+  AdaptiveQuality,
+  detectInitialTier,
+  QUALITY_TIERS,
+  type GraphicsMode,
+  type QualityTier,
+} from './Quality';
 import { LightingDirector, type LightingState } from './Lighting';
 
 /** Dev hotkey ('l') cycles these — every state must stay readable. */
@@ -52,7 +59,7 @@ export class Experience {
   readonly stadium: Stadium;
   readonly levels: LevelDirector;
   readonly game: GameObjects;
-  readonly post: PostProcessing;
+  post: PostProcessing; // reassigned by quality-tier changes
   readonly input: Input;
   readonly hud: Hud;
   readonly screens: Screens;
@@ -69,6 +76,10 @@ export class Experience {
   private weatherBase = 0;
   /** The one debug GUI instance — shared by ?debug=1 and Settings→Developer. */
   private debugGui: ReturnType<typeof createDebugGui> | null = null;
+  private graphicsMode: GraphicsMode = 'AUTO';
+  private qualityTier: QualityTier = 'HIGH';
+  /** Frame-time watchdog — only active in AUTO mode; only steps DOWN. */
+  private adaptive: AdaptiveQuality | null = null;
   private readonly clock = new THREE.Clock();
   private readonly shakeQuat = new THREE.Quaternion();
   private controls: OrbitControls | null = null;
@@ -82,19 +93,27 @@ export class Experience {
       this.cfg.camera.state = camParam;
     }
 
-    // Coarse-pointer (touch) devices get a lighter tier: lower pixel-ratio
-    // cap and a smaller shadow map.
-    const isCoarse = window.matchMedia('(pointer: coarse)').matches;
+    // Graphics tier: persisted choice or device detection. AUTO also steps
+    // itself down at runtime when the measured frame rate stays low — the
+    // fill-rate knobs (pixel ratio, MSAA, bloom resolution, shadows) are
+    // what kill small/integrated GPUs.
+    const savedSettings = this.loadSettings();
+    this.graphicsMode = this.cfg.graphics.mode;
+    this.qualityTier = this.graphicsMode === 'AUTO' ? detectInitialTier() : this.graphicsMode;
+    const caps = QUALITY_TIERS[this.qualityTier];
+    this.cfg.performance.particleScale = caps.particleScale;
 
     // No canvas MSAA — anti-aliasing comes from the composer's multisampled
     // render target; a multisampled default framebuffer would be dead weight.
     this.renderer = new THREE.WebGLRenderer({
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isCoarse ? 1.5 : 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, caps.pixelRatioCap));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = caps.shadowMapSize > 0;
+    this.renderer.shadowMap.type = caps.softShadows
+      ? THREE.PCFSoftShadowMap
+      : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = this.cfg.lighting.exposure;
     this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -102,14 +121,18 @@ export class Experience {
 
     this.rig = new CameraRig(this.cfg, container.clientWidth / container.clientHeight);
     this.applyEnvironment();
-    this.lighting = new LightingDirector(this.scene, this.cfg, isCoarse ? 1024 : 2048);
+    this.lighting = new LightingDirector(this.scene, this.cfg, caps.shadowMapSize || 1024);
+    this.lighting.setShadowMapSize(caps.shadowMapSize);
     this.env = new EnvironmentDirector(this.cfg); // captures the CLAY base
     this.stadium = new Stadium(this.scene, this.cfg);
     this.stadium.build();
     this.levels = new LevelDirector(this.cfg);
     this.game = new GameObjects(this.scene, this.cfg, this.levels);
     this.game.build();
-    this.post = new PostProcessing(this.renderer, this.scene, this.rig.camera, this.cfg);
+    this.post = new PostProcessing(this.renderer, this.scene, this.rig.camera, this.cfg, {
+      msaaSamples: caps.msaaSamples,
+      bloomScale: caps.bloomScale,
+    });
 
     container.style.position = 'relative';
     this.hud = new Hud(container);
@@ -134,7 +157,11 @@ export class Experience {
       this.vfx.shake
     );
     this.weather = new WeatherManager(this.audio);
-    this.weather.setQuality(isCoarse ? 'LOW' : this.cfg.weatherFx.quality);
+    // The tier picks the rain density unless the player explicitly saved one.
+    if (savedSettings['rainQuality'] === undefined) {
+      this.cfg.weatherFx.quality = caps.rainQuality;
+    }
+    this.weather.setQuality(this.cfg.weatherFx.quality);
     this.scene.add(this.weather.group);
     this.lightning = new LightningDirector(this.cfg, this.feel, this.audio);
     this.scene.add(this.lightning.group);
@@ -226,7 +253,20 @@ export class Experience {
       } else if (key === 'rainQuality') {
         this.cfg.weatherFx.quality = value as 'LOW' | 'MEDIUM' | 'HIGH';
         this.weather.setQuality(this.cfg.weatherFx.quality);
+      } else if (key === 'graphics') {
+        const mode = value as GraphicsMode;
+        this.cfg.graphics.mode = mode;
+        this.graphicsMode = mode;
+        if (mode === 'AUTO') {
+          const tier = detectInitialTier();
+          this.adaptive = new AdaptiveQuality(tier, (t): void => this.applyQuality(t));
+          this.applyQuality(tier);
+        } else {
+          this.adaptive = null;
+          this.applyQuality(mode);
+        }
       }
+      this.saveSetting(key, value);
     };
     if (import.meta.env.DEV) {
       this.loop.onOpenDevTools = (): void => {
@@ -235,6 +275,12 @@ export class Experience {
     }
     this.audio.setSfxVolume(this.cfg.audioSettings.sfxVolume);
     this.music.setVolume(this.cfg.audioSettings.musicVolume);
+
+    if (this.graphicsMode === 'AUTO') {
+      this.adaptive = new AdaptiveQuality(this.qualityTier, (tier): void =>
+        this.applyQuality(tier)
+      );
+    }
 
     // Browsers only allow audio after a user gesture — unlock on the first.
     window.addEventListener('pointerdown', this.unlockAudio);
@@ -269,6 +315,79 @@ export class Experience {
     // The clay material is recreated by every build — re-attach or the
     // wet-surface controller keeps driving the disposed one.
     this.wetSurface.attach(this.stadium.clayMaterial);
+  }
+
+  /** Re-applies every quality knob for a tier. Rare (setting change or one
+   * AUTO step-down), so rebuilding the composer outright is fine. */
+  private applyQuality(tier: QualityTier): void {
+    this.qualityTier = tier;
+    const caps = QUALITY_TIERS[tier];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, caps.pixelRatioCap));
+    this.renderer.shadowMap.enabled = caps.shadowMapSize > 0;
+    this.renderer.shadowMap.type = caps.softShadows
+      ? THREE.PCFSoftShadowMap
+      : THREE.PCFShadowMap;
+    this.lighting.setShadowMapSize(caps.shadowMapSize);
+    // Shadow-map toggles only take effect once materials recompile.
+    this.scene.traverse((obj) => {
+      const material = (obj as THREE.Mesh).material as
+        | THREE.Material
+        | THREE.Material[]
+        | undefined;
+      if (!material) return;
+      for (const m of Array.isArray(material) ? material : [material]) m.needsUpdate = true;
+    });
+    // The composer captures pixel ratio and target samples at construction —
+    // rebuild it, and hand the fresh instance to the feel manager.
+    this.post.dispose();
+    this.post = new PostProcessing(this.renderer, this.scene, this.rig.camera, this.cfg, {
+      msaaSamples: caps.msaaSamples,
+      bloomScale: caps.bloomScale,
+    });
+    this.feel.setPost(this.post);
+    this.vfx.setPixelRatio(this.renderer.getPixelRatio());
+    this.cfg.performance.particleScale = caps.particleScale;
+    this.cfg.weatherFx.quality = caps.rainQuality;
+    this.weather.setQuality(caps.rainQuality);
+    this.onResize();
+  }
+
+  /** Persisted player settings — applied to cfg before systems construct. */
+  private loadSettings(): Record<string, unknown> {
+    try {
+      const raw = localStorage.getItem('acb-settings');
+      if (!raw) return {};
+      const s = JSON.parse(raw) as Record<string, unknown>;
+      const cfg = this.cfg;
+      if (typeof s['musicVolume'] === 'number') cfg.audioSettings.musicVolume = s['musicVolume'];
+      if (typeof s['sfxVolume'] === 'number') cfg.audioSettings.sfxVolume = s['sfxVolume'];
+      if (s['screenShake'] === 'FULL' || s['screenShake'] === 'REDUCED' || s['screenShake'] === 'OFF')
+        cfg.accessibility.screenShake = s['screenShake'];
+      if (typeof s['bloom'] === 'number') cfg.bloom.strength = s['bloom'];
+      if (s['rainQuality'] === 'LOW' || s['rainQuality'] === 'MEDIUM' || s['rainQuality'] === 'HIGH')
+        cfg.weatherFx.quality = s['rainQuality'];
+      if (
+        s['graphics'] === 'AUTO' ||
+        s['graphics'] === 'LOW' ||
+        s['graphics'] === 'MEDIUM' ||
+        s['graphics'] === 'HIGH'
+      )
+        cfg.graphics.mode = s['graphics'];
+      return s;
+    } catch {
+      return {}; // corrupt JSON or storage blocked — fall back to defaults
+    }
+  }
+
+  private saveSetting(key: string, value: string | number): void {
+    try {
+      const raw = localStorage.getItem('acb-settings');
+      const s = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      s[key] = value;
+      localStorage.setItem('acb-settings', JSON.stringify(s));
+    } catch {
+      // Private mode / storage denied — settings just don't persist.
+    }
   }
 
   rebuildGame(): void {
@@ -330,6 +449,8 @@ export class Experience {
 
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.1);
+    // AUTO graphics: feed real frame time to the watchdog (spikes excluded).
+    if (this.adaptive && dt < 0.095) this.adaptive.frame(dt * 1000);
     this.loop.update(dt);
     this.vfx.update(dt);
     this.music.setIntensity(this.loop.musicIntensity);

@@ -37,10 +37,16 @@ export class GameFeelManager {
     private cfg: VisualConfig,
     private rig: CameraRig,
     private post: PostProcessing,
+    // (post is swapped by quality-tier changes via setPost below)
     private hud: Hud,
     private audio: AudioFx,
     private shake: CameraShake
   ) {}
+
+  /** Quality-tier changes rebuild the composer — adopt the new instance. */
+  setPost(post: PostProcessing): void {
+    this.post = post;
+  }
 
   /** Fire a preset impact. Concurrent impacts compose (max/add with clamps). */
   impact(name: ImpactPreset): void {

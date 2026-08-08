@@ -259,6 +259,7 @@ export class Screens {
       screenShake: string;
       bloom: number;
       rainQuality: string;
+      graphics: string;
     };
     onChange: (key: string, value: string | number) => void;
     onBack: () => void;
@@ -281,6 +282,10 @@ export class Screens {
           </select></div>
         <div class="acb-set-row"><span>BLOOM</span>
           <input type="range" min="0" max="1.2" step="0.05" value="${v.bloom}" data-key="bloom" /></div>
+        <div class="acb-set-row"><span>GRAPHICS</span>
+          <select data-key="graphics">
+            ${['AUTO', 'LOW', 'MEDIUM', 'HIGH'].map((o) => `<option ${o === v.graphics ? 'selected' : ''}>${o}</option>`).join('')}
+          </select></div>
         <div class="acb-set-row"><span>RAIN QUALITY</span>
           <select data-key="rainQuality">
             ${['LOW', 'MEDIUM', 'HIGH'].map((o) => `<option ${o === v.rainQuality ? 'selected' : ''}>${o}</option>`).join('')}

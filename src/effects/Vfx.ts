@@ -70,6 +70,16 @@ export class Vfx {
   );
   private readonly comicWords: ComicWordInstance[] = [];
 
+  /** Quality tier changed the renderer's pixel ratio — track it. */
+  setPixelRatio(value: number): void {
+    this.pixelRatio = value;
+  }
+
+  /** Quality tier scales burst particle counts on small GPUs. */
+  private scaled(count: number): number {
+    return Math.max(1, Math.ceil(count * this.cfg.performance.particleScale));
+  }
+
   constructor(
     private cfg: VisualConfig,
     private rig: CameraRig,
@@ -87,7 +97,7 @@ export class Vfx {
     const v = this.cfg.game.vfx;
     const energyScale = 1 + energy * 0.8;
     this.particles.burst(position, {
-      count: Math.ceil((heavy ? v.sparkCount * 1.8 : v.sparkCount) * energyScale),
+      count: this.scaled((heavy ? v.sparkCount * 1.8 : v.sparkCount) * energyScale),
       speed: (heavy ? v.sparkSpeed * 1.4 : v.sparkSpeed) * (1 + energy * 0.3),
       size: heavy ? 0.22 : 0.16,
       life: 0.5,
@@ -119,7 +129,7 @@ export class Vfx {
   paddleImpact(position: THREE.Vector3): void {
     const v = this.cfg.game.vfx;
     this.particles.burst(position, {
-      count: Math.ceil(v.sparkCount * 0.4),
+      count: this.scaled(v.sparkCount * 0.4),
       speed: v.sparkSpeed * 0.7,
       size: 0.11,
       life: 0.35,
@@ -134,7 +144,7 @@ export class Vfx {
   wallImpact(position: THREE.Vector3): void {
     const v = this.cfg.game.vfx;
     this.particles.burst(position, {
-      count: Math.ceil(v.sparkCount * 0.3),
+      count: this.scaled(v.sparkCount * 0.3),
       speed: v.sparkSpeed * 0.55,
       size: 0.09,
       life: 0.3,
@@ -152,7 +162,7 @@ export class Vfx {
   lifeLostCinematic(position: THREE.Vector3): void {
     this.impactLights.flash(position, 20, '#ff2a1a');
     this.particles.burst(position, {
-      count: 18,
+      count: this.scaled(18),
       speed: 4,
       size: 0.16,
       life: 0.6,
@@ -167,7 +177,7 @@ export class Vfx {
   comicBurst(position: THREE.Vector3): void {
     this.comicWord(position, true);
     this.particles.burst(position, {
-      count: 30,
+      count: this.scaled(30),
       speed: 6,
       size: 0.2,
       life: 0.55,
@@ -182,7 +192,7 @@ export class Vfx {
   /** Small electric crackle on a telegraphed lightning target. */
   telegraphSpark(position: THREE.Vector3): void {
     this.particles.burst(position, {
-      count: 3,
+      count: this.scaled(3),
       speed: 2.2,
       size: 0.09,
       life: 0.22,
@@ -196,7 +206,7 @@ export class Vfx {
   /** The lightning strike lands — electric arcs + blue-white flash. */
   lightningImpact(position: THREE.Vector3): void {
     this.particles.burst(position, {
-      count: 24,
+      count: this.scaled(24),
       speed: 6.5,
       size: 0.18,
       life: 0.5,
@@ -211,7 +221,7 @@ export class Vfx {
   /** Short green streak burst at the paddle when it dashes. */
   dashBurst(position: THREE.Vector3): void {
     this.particles.burst(position, {
-      count: 10,
+      count: this.scaled(10),
       speed: 3.5,
       size: 0.12,
       life: 0.3,

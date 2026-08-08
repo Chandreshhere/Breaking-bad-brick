@@ -67,7 +67,8 @@ export class PostProcessing {
     renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
     camera: THREE.Camera,
-    cfg: VisualConfig
+    cfg: VisualConfig,
+    quality: { msaaSamples: number; bloomScale: number } = { msaaSamples: 4, bloomScale: 1 }
   ) {
     // Size the custom target in device pixels — EffectComposer adopts a custom
     // target's dimensions verbatim, so CSS-pixel sizing would render the whole
@@ -78,15 +79,20 @@ export class PostProcessing {
       Math.floor(size.x * dpr),
       Math.floor(size.y * dpr),
       {
-        samples: 4,
+        samples: quality.msaaSamples,
         type: THREE.HalfFloatType,
       }
     );
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
 
+    // Lower tiers run the bloom mip chain at reduced resolution — the blur
+    // spreads slightly wider but the fill cost drops with the square.
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(size.x, size.y),
+      new THREE.Vector2(
+        Math.max(64, Math.floor(size.x * quality.bloomScale)),
+        Math.max(64, Math.floor(size.y * quality.bloomScale))
+      ),
       cfg.bloom.strength,
       cfg.bloom.radius,
       cfg.bloom.threshold

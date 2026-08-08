@@ -314,6 +314,7 @@ export class Game {
         screenShake: cfg.accessibility.screenShake,
         bloom: cfg.bloom.strength,
         rainQuality: cfg.weatherFx.quality,
+        graphics: cfg.graphics.mode,
       },
       onChange: (key, value): void => this.onSettingChanged?.(key, value),
       onBack: (): void => {

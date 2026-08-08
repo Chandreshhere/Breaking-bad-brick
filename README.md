@@ -253,6 +253,17 @@ Arcade roadmap 25–34 in progress:
   power-ups) now play through a single-slot queue with a minimum read
   time, so rapid events never overlap on screen.
 
+- ✅ **Graphics quality tiers**: LOW / MEDIUM / HIGH scale exactly what
+  hurts small and integrated GPUs — the pixel-ratio cap (1 / 1.5 / 2),
+  composer MSAA samples (0 / 2 / 4), UnrealBloom internal resolution
+  (0.45× / 0.6× / 1×), sun shadows (off / 1024 PCF / 2048 PCF-soft),
+  rain density, and VFX particle counts. The default **AUTO** mode picks
+  a starting tier from device hints (touch, cores, memory) and steps
+  itself down when the smoothed frame time stays above ~26ms for two
+  seconds — never up, so it can't oscillate. Player-facing GRAPHICS
+  select lives in Settings, and all settings now persist in
+  localStorage across sessions.
+
 **All phases 1–34 complete.** A final 12-agent adversarial review of the
 arcade expansion confirmed and fixed six bugs pre-release: a field-clear
 softlock via stale pending kills, dying-brick animations corrupting the

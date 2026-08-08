@@ -280,6 +280,16 @@ export const VISUAL_CONFIG = {
     quality: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH', // rain density tier
   },
 
+  graphics: {
+    /** AUTO detects a tier and steps down if the frame rate stays low. */
+    mode: 'AUTO' as 'AUTO' | 'LOW' | 'MEDIUM' | 'HIGH',
+  },
+
+  performance: {
+    /** Set by the quality tier — multiplies VFX burst particle counts. */
+    particleScale: 1,
+  },
+
   /** Which world architecture the stadium builds — set by the EnvironmentDirector. */
   worldKind: 'STADIUM' as 'STADIUM' | 'LOTUS' | 'ARCADE' | 'COMIC',
 
