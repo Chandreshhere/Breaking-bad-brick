@@ -185,9 +185,47 @@ export class Hud {
     this.messageEl.style.display = text ? 'block' : 'none';
   }
 
-  /** Big centred power-up announcement that scales in and fades out. */
+  // ── Single-slot announcement flash ────────────────────────────────────
+  // One reusable element + a one-deep queue: rapid events (combo tier,
+  // powerup, wave, level) play one after another instead of stacking
+  // translucent text on the same screen spot.
+  private flashEl: HTMLDivElement | null = null;
+  private flashBusy = false;
+  private flashExiting = false;
+  private flashShownAt = 0;
+  private flashNext: { text: string; color: string } | null = null;
+  private flashHoldTimer = 0;
+  private flashEndTimer = 0;
+
+  /** Big centred announcement — queued, never overlapping a previous one. */
   powerupFlash(text: string, color: string): void {
-    const el = document.createElement('div');
+    if (this.flashBusy) {
+      // Newest message wins the single waiting slot; repeats are dropped.
+      if (this.flashEl?.textContent !== text) this.flashNext = { text, color };
+      // Fast-forward the current message out (after a minimum read time)
+      // so the chain stays snappy without ever double-printing.
+      if (!this.flashExiting) {
+        const shown = performance.now() - this.flashShownAt;
+        window.clearTimeout(this.flashHoldTimer);
+        this.flashHoldTimer = window.setTimeout(
+          () => this.beginFlashExit(),
+          Math.max(0, 320 - shown)
+        );
+      }
+      return;
+    }
+    this.showFlash(text, color);
+  }
+
+  private showFlash(text: string, color: string): void {
+    this.flashBusy = true;
+    this.flashExiting = false;
+    this.flashShownAt = performance.now();
+    if (!this.flashEl) {
+      this.flashEl = document.createElement('div');
+      this.root.appendChild(this.flashEl);
+    }
+    const el = this.flashEl;
     el.textContent = text;
     el.style.cssText = [
       'position:absolute',
@@ -200,21 +238,34 @@ export class Hud {
       'letter-spacing:0.35em',
       `text-shadow:0 0 26px ${color}, 0 2px 12px rgba(0,0,0,0.7)`,
       'opacity:0',
-      'transition:all 0.18s ease-out',
+      'transition:none',
       'pointer-events:none',
       'white-space:nowrap',
     ].join(';');
-    this.root.appendChild(el);
     requestAnimationFrame(() => {
+      el.style.transition = 'all 0.18s ease-out';
       el.style.opacity = '1';
       el.style.transform = 'translate(-50%,-50%) scale(1.12)';
     });
-    window.setTimeout(() => {
-      el.style.transition = 'all 0.4s ease-in';
-      el.style.opacity = '0';
-      el.style.transform = 'translate(-50%,-50%) scale(1.35)';
-    }, 750);
-    window.setTimeout(() => el.remove(), 1200);
+    window.clearTimeout(this.flashHoldTimer);
+    window.clearTimeout(this.flashEndTimer);
+    this.flashHoldTimer = window.setTimeout(() => this.beginFlashExit(), 700);
+  }
+
+  private beginFlashExit(): void {
+    const el = this.flashEl;
+    if (!el || this.flashExiting) return;
+    this.flashExiting = true;
+    el.style.transition = 'all 0.3s ease-in';
+    el.style.opacity = '0';
+    el.style.transform = 'translate(-50%,-50%) scale(1.3)';
+    this.flashEndTimer = window.setTimeout(() => {
+      this.flashBusy = false;
+      this.flashExiting = false;
+      const next = this.flashNext;
+      this.flashNext = null;
+      if (next) this.showFlash(next.text, next.color);
+    }, 300);
   }
 
   private activePops = 0;

@@ -77,7 +77,39 @@ const CSS = /* css */ `
 .acb-set-row select { background: #0c2717; color: #f2edda; border: 1px solid #efd42e55;
   padding: 6px 10px; letter-spacing: 0.1em; font-family: inherit; }
 .acb-set-dev { margin-top: 10px; opacity: 0.8; }
+.acb-pill-ghost { background: transparent; color: #efd42e; border: 1.5px solid #efd42e88;
+  padding: 14px 30px; font-size: clamp(12px, 1.3vw, 16px); margin-top: 14px; }
+.acb-pill-ghost:hover { border-color: #efd42e; }
+.acb-intro-cta { display: flex; flex-direction: column; align-items: flex-end; }
+.acb-maps-wrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(860px, 92vw); display: flex; flex-direction: column; gap: 26px; align-items: center; }
+.acb-maps-wrap h2 { font-size: clamp(28px, 4vw, 44px); letter-spacing: 0.18em; color: #f2edda;
+  font-weight: 700; margin: 0; }
+.acb-maps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px; width: 100%; }
+.acb-map-card { background: rgba(0,0,0,0.35); border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 14px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px;
+  cursor: pointer; font-family: inherit; text-align: left; transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.acb-map-card:hover { transform: translateY(-3px); border-color: var(--c);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--c) 35%, transparent); }
+.acb-map-selected { border-color: var(--c); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 45%, transparent);
+  background: color-mix(in srgb, var(--c) 12%, rgba(0,0,0,0.35)); }
+.acb-map-name { color: var(--c); font-size: clamp(15px, 1.6vw, 20px); font-weight: 700;
+  letter-spacing: 0.14em; }
+.acb-map-sub { color: rgba(242,237,218,0.6); font-size: clamp(10px, 1vw, 13px);
+  letter-spacing: 0.2em; }
 `;
+
+/** Menu arena catalogue — key null is the automatic 3-level cycle. */
+const MAPS: Array<{ key: string | null; name: string; sub: string; color: string }> = [
+  { key: null, name: 'AUTO CYCLE', sub: 'A NEW ARENA EVERY 3 LEVELS', color: '#efd42e' },
+  { key: 'CLAY', name: 'CLAY COURT', sub: 'NIGHT SESSION', color: '#d98a4f' },
+  { key: 'NEON', name: 'NEON NIGHT', sub: 'ELECTRIC RALLY', color: '#4fc3ff' },
+  { key: 'HELL', name: 'INFERNO', sub: 'EMBERS & ASH', color: '#ff5a3a' },
+  { key: 'LOTUS_OS', name: 'LOTUS//OS', sub: 'HOLOGRAPHIC COURT', color: '#35e0ff' },
+  { key: 'NEON_ARCADE', name: 'NEON ARCADE', sub: 'INSERT COIN', color: '#ffd21e' },
+  { key: 'COMIC_IMPACT', name: 'COMIC IMPACT', sub: 'BAM! POW! SMASH!', color: '#ff3ad8' },
+];
 
 const BALL_SVG = `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0c2717"/><path d="M4 6 C10 10 10 14 4 18 M20 6 C14 10 14 14 20 18" stroke="#efd42e" stroke-width="1.8" fill="none"/></svg>`;
 
@@ -131,7 +163,11 @@ export class Screens {
     this.current = null;
   }
 
-  showIntro(onPlay: () => void, onSettings?: () => void): void {
+  showIntro(
+    onPlay: () => void,
+    onSettings?: () => void,
+    arena?: { label: string; open: () => void }
+  ): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
     el.innerHTML = `
@@ -144,11 +180,52 @@ export class Screens {
       <div class="acb-divider"></div>
       <div class="acb-intro-cta">
         <button class="acb-pill" data-action="play">${BALL_SVG}PLAY</button>
+        ${arena ? `<button class="acb-pill acb-pill-ghost" data-action="arena">ARENA: ${arena.label}</button>` : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="play"]')!.onclick = onPlay;
     const gear = el.querySelector<HTMLButtonElement>('[data-action="settings"]')!;
     if (onSettings) gear.onclick = onSettings;
     else gear.remove();
+    const arenaBtn = el.querySelector<HTMLButtonElement>('[data-action="arena"]');
+    if (arenaBtn && arena) arenaBtn.onclick = arena.open;
+    this.show(el);
+  }
+
+  /** Display name for a biome key (null = the automatic 3-level cycle). */
+  mapName(key: string | null): string {
+    return MAPS.find((m) => m.key === key)?.name ?? 'AUTO CYCLE';
+  }
+
+  /** Arena picker — one card per world; the current pick is highlighted. */
+  showMapSelect(opts: {
+    current: string | null;
+    onPick: (key: string | null) => void;
+    onBack: () => void;
+  }): void {
+    const el = document.createElement('div');
+    el.className = 'acb-screen';
+    const cards = MAPS.map(
+      (m) => `
+      <button class="acb-map-card${m.key === opts.current ? ' acb-map-selected' : ''}"
+              style="--c:${m.color}" data-map="${m.key ?? 'AUTO'}">
+        <span class="acb-map-name">${m.name}</span>
+        <span class="acb-map-sub">${m.sub}</span>
+      </button>`
+    ).join('');
+    el.innerHTML = `
+      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-maps-wrap">
+        <h2>SELECT ARENA</h2>
+        <div class="acb-maps">${cards}</div>
+        <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
+      </div>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((card) => {
+      card.onclick = (): void => {
+        const raw = card.dataset['map']!;
+        opts.onPick(raw === 'AUTO' ? null : raw);
+      };
+    });
+    el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
     this.show(el);
   }
 
