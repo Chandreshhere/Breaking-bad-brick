@@ -1,13 +1,12 @@
 <div align="center">
 
-```
- █████╗  ██████╗███████╗    ██████╗ ██████╗ ███████╗ █████╗ ██╗  ██╗███████╗██████╗
-██╔══██╗██╔════╝██╔════╝    ██╔══██╗██╔══██╗██╔════╝██╔══██╗██║ ██╔╝██╔════╝██╔══██╗
-███████║██║     █████╗      ██████╔╝██████╔╝█████╗  ███████║█████╔╝ █████╗  ██████╔╝
-██╔══██║██║     ██╔══╝      ██╔══██╗██╔══██╗██╔══╝  ██╔══██║██╔═██╗ ██╔══╝  ██╔══██╗
-██║  ██║╚██████╗███████╗    ██████╔╝██║  ██║███████╗██║  ██║██║  ██╗███████╗██║  ██║
-╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-```
+# ACE BREAKER
+
+<a href="https://moon-game-lovat.vercel.app">
+  <img src="docs/preview.gif" alt="Ace Breaker gameplay preview" width="720">
+</a>
+
+*Real gameplay capture — level 1, clay court.*
 
 **A 3D arcade brick-breaker played on a floodlit clay court — 100% procedural.**
 
@@ -22,33 +21,15 @@
 ![WebGL](https://img.shields.io/badge/WebGL-2.0-990000?style=for-the-badge&logo=webgl&logoColor=white)
 ![Assets](https://img.shields.io/badge/EXTERNAL%20ASSETS-0-efd42e?style=for-the-badge)
 
-🟨🟩🟩🟩⬜🟦🟦🟦🟧🟧🟧🟪🟪🟪🟥🟥🟥⬜🟩🟩🟩🟨
-
 </div>
 
 ---
 
 ## 🕹 THE GAME
 
-Break every brick. Never let the ball past you.
-
-```
-═══════════════════════ FAR WALL ═══════════════════════
-
-   ████  ▓▓▓▓  ████  ▒▒▒▒  ████  ▓▓▓▓  ████     <- the field
-   ▓▓▓▓  ████  ░░░░  ████  ░░░░  ████  ▓▓▓▓
-   ████  ▒▒▒▒  ████  ▓▓▓▓  ████  ▒▒▒▒  ████
-
-                      .
-                        .   (o)   <- the ball, never stops
-                           .
-
-   - - - - - -  PLAYER ZONE (nearest ~28%)  - - - - - -
-
-                  ▂▂▂▂▂▂▂▂▂▂▂▂   <- you
-
-XXXXXXXXX  LOSS LINE — ball crosses this, you lose a life  XXXXXXXXX
-```
+Break every brick. Never let the ball past you. The field sits at the far end of
+the court, you hold the near end, and the ball never stops — if it crosses the
+line behind you, that's a life.
 
 | Action | Mouse / Keys | Touch |
 |:--|:--|:--|
@@ -202,7 +183,8 @@ out on GitHub.
   rebuilt from scratch, procedurally.
 - Built on [**Three.js**](https://threejs.org) and [**Vite**](https://vitejs.dev);
   debug UI by [**lil-gui**](https://lil-gui.georgealways.com).
-- ASCII wordmark rendered in the *ANSI Shadow* figlet font.
+- Preview GIF captured from a live build with Playwright, downsampled to
+  pixel-art with ffmpeg.
 
 > **Branding note:** all wordmarks are replacement branding ("ACE BREAKER").
 > No proprietary Lacoste marks or assets are reproduced.
@@ -376,12 +358,6 @@ baselines at session/wave start, and boss telegraphs resetting across serves.
 
 <div align="center">
 
-```
-        (o)
-   ▂▂▂▂▂▂▂▂▂▂▂▂
-    GOOD LUCK
-```
-
-🟨🟩🟩🟩⬜🟦🟦🟦🟧🟧🟧🟪🟪🟪🟥🟥🟥⬜🟩🟩🟩🟨
+### [▶ PLAY ACE BREAKER](https://moon-game-lovat.vercel.app)
 
 </div>
