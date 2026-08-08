@@ -448,9 +448,11 @@ export class Experience {
   }
 
   private tick = (): void => {
-    const dt = Math.min(this.clock.getDelta(), 0.1);
-    // AUTO graphics: feed real frame time to the watchdog (spikes excluded).
-    if (this.adaptive && dt < 0.095) this.adaptive.frame(dt * 1000);
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(rawDt, 0.1);
+    // AUTO graphics: the watchdog needs the UNCLAMPED frame time — the
+    // gameplay clamp above would disguise a 5fps grind as clean 100ms frames.
+    this.adaptive?.frame(rawDt * 1000);
     this.loop.update(dt);
     this.vfx.update(dt);
     this.music.setIntensity(this.loop.musicIntensity);

@@ -87,10 +87,11 @@ export class AdaptiveQuality {
   ) {}
 
   frame(dtMs: number): void {
-    // Spikes (tab switch, stadium rebuild, shader compile) are not a
-    // sustained-load signal — ignore them.
-    if (dtMs > 100) return;
-    this.emaMs += (dtMs - this.emaMs) * 0.05;
+    // True pauses (tab switch, window drag) are not a load signal — ignore
+    // them. Everything below that COUNTS, clamped so one hitch can't warp
+    // the average: a device grinding at 5fps must not read as "spikes".
+    if (dtMs > 500) return;
+    this.emaMs += (Math.min(dtMs, 250) - this.emaMs) * 0.05;
     const dt = dtMs / 1000;
     if (this.cooldown > 0) {
       this.cooldown -= dt;
