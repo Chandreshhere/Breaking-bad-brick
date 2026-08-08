@@ -2,7 +2,7 @@
 
 # ACE BREAKER
 
-<a href="https://moon-game-lovat.vercel.app">
+<a href="https://moon-game-seven.vercel.app">
   <img src="docs/preview.gif" alt="Ace Breaker gameplay preview" width="720">
 </a>
 
@@ -10,10 +10,10 @@
 
 **A 3D arcade brick-breaker played on a floodlit clay court — 100% procedural.**
 
-### [![PLAY NOW](https://img.shields.io/badge/▶%20%20PLAY%20NOW-efd42e?style=for-the-badge&labelColor=0c2717&color=efd42e)](https://moon-game-lovat.vercel.app)
+### [![PLAY NOW](https://img.shields.io/badge/▶%20%20PLAY%20NOW-efd42e?style=for-the-badge&labelColor=0c2717&color=efd42e)](https://moon-game-seven.vercel.app)
 
 **Free to play in your browser — no install, no sign-up.**
-[moon-game-lovat.vercel.app](https://moon-game-lovat.vercel.app)
+[moon-game-seven.vercel.app](https://moon-game-seven.vercel.app)
 
 ![Three.js](https://img.shields.io/badge/three.js-r180-000000?style=for-the-badge&logo=three.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
@@ -95,7 +95,7 @@ without meaning*, and *every visual number lives in `VISUAL_CONFIG`*.
 
 ## 🚀 GETTING STARTED
 
-> **Just want to play?** → **[moon-game-lovat.vercel.app](https://moon-game-lovat.vercel.app)**
+> **Just want to play?** → **[moon-game-seven.vercel.app](https://moon-game-seven.vercel.app)**
 > — nothing to install.
 >
 > The steps below are for the copyright holder and authorised collaborators
@@ -168,7 +168,7 @@ surface at `Y = 0`. Gameplay runs on the X/Z plane — frame-rate independent.
 
 | | |
 |:--|:--|
-| ✅ **Allowed** | Playing the hosted game at [moon-game-lovat.vercel.app](https://moon-game-lovat.vercel.app), for free, as much as you like |
+| ✅ **Allowed** | Playing the hosted game at [moon-game-seven.vercel.app](https://moon-game-seven.vercel.app), for free, as much as you like |
 | ❌ **Not allowed** | Copying, cloning, forking, reusing, modifying, redistributing or self-hosting the code — or any part of it — including in portfolios, tutorials or AI training data |
 
 Copyright © 2026 Chandreshhere. All rights reserved.
@@ -358,6 +358,6 @@ baselines at session/wave start, and boss telegraphs resetting across serves.
 
 <div align="center">
 
-### [▶ PLAY ACE BREAKER](https://moon-game-lovat.vercel.app)
+### [▶ PLAY ACE BREAKER](https://moon-game-seven.vercel.app)
 
 </div>
