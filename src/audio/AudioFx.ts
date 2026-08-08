@@ -212,10 +212,18 @@ export class AudioFx {
     this.tone(1300 + Math.random() * 900, 0.03, 'sine', 0.05, 650);
   }
 
-  /** Rolling thunder after a lightning delay (apparent distance). */
+  /**
+   * Thunder with real structure: a sharp broadband CRACK at the front
+   * (strong for near strikes, softened by distance), then the mid-band
+   * body, then a long low rumble tail. `delay` is the light→sound gap —
+   * near-zero for gameplay strikes, up to ~1.2s for horizon bolts.
+   */
   thunder(delay: number, gain = 0.35): void {
-    this.noise(1.4, gain, 220, delay);
-    this.tone(52, 1.1, 'sine', gain * 0.7, 38, delay + 0.05);
+    const near = Math.max(0, 1 - delay); // closer strike → harder crack
+    this.noise(0.14, gain * (0.5 + near * 0.7), 3600, delay);
+    this.noise(2.1, gain, 300, delay + 0.05);
+    this.tone(48, 2.3, 'sine', gain * 0.85, 34, delay + 0.1);
+    this.tone(64, 1.5, 'sine', gain * 0.4, 46, delay + 0.4);
   }
 
   /** Rising electrical charge — a lightning telegraph is building. */

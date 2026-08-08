@@ -44,8 +44,11 @@ export class LightningBolt {
       target.z - 1.5 + (Math.random() - 0.5) * 2
     );
     const main = subdivide(start, target.clone(), 2.6, 5);
-    this.addPolyline(main, 0.055, '#ffffff', 0.95);
-    this.addPolyline(main, 0.17, '#8a78ff', 0.3);
+    // Thick triple layer — the bolt must read instantly even mid-rally:
+    // hot white core, inner violet sheath, wide soft glow for bloom.
+    this.addPolyline(main, 0.09, '#ffffff', 1.0);
+    this.addPolyline(main, 0.22, '#b0a4ff', 0.45);
+    this.addPolyline(main, 0.45, '#7a66ff', 0.16);
 
     // Side branches peel off downward-outward.
     for (let i = 2; i < main.length - 3; i++) {
@@ -88,12 +91,14 @@ export class LightningBolt {
 
   update(dt: number): void {
     this.life += dt;
-    // Irregular flicker, never one long continuous bolt.
+    // Irregular flicker, never one long continuous bolt — but held long
+    // enough to actually be SEEN (the old 0.34s vanished between glances).
     let flicker = 0;
-    if (this.life < 0.07) flicker = 1;
-    else if (this.life < 0.11) flicker = 0.12;
-    else if (this.life < 0.19) flicker = 0.8;
-    else if (this.life < 0.34) flicker = Math.max(0, 1 - (this.life - 0.19) / 0.15);
+    if (this.life < 0.09) flicker = 1;
+    else if (this.life < 0.13) flicker = 0.15;
+    else if (this.life < 0.24) flicker = 0.9;
+    else if (this.life < 0.3) flicker = 0.35;
+    else if (this.life < 0.55) flicker = Math.max(0, 0.8 - (this.life - 0.3) / 0.31);
     else this.alive = false;
 
     this.group.visible = flicker > 0.02;

@@ -58,7 +58,7 @@ export class MusicEngine {
 
   setVolume(volume: number): void {
     this.volume = Math.min(1, Math.max(0, volume));
-    if (this.bus) this.bus.gain.value = 0.42 * this.volume;
+    if (this.bus) this.bus.gain.value = 0.52 * this.volume;
   }
 
   private rand(): number {
@@ -75,7 +75,7 @@ export class MusicEngine {
     this.ctx = ctx;
 
     this.bus = ctx.createGain();
-    this.bus.gain.value = 0.42 * this.volume;
+    this.bus.gain.value = 0.52 * this.volume;
     this.bus.connect(master);
 
     const makeStem = (): GainNode => {
@@ -126,13 +126,15 @@ export class MusicEngine {
 
   private levels(): StemLevels {
     const i = this.intensity;
+    // Stems enter early and hot — the loop should already be driving at
+    // mid intensity, not waiting for a perfect rally to wake up.
     return {
       ambience: 0.5 + i * 0.5,
-      drums: gate(i, 0.18, 0.32),
-      bass: gate(i, 0.38, 0.5),
-      hats: gate(i, 0.52, 0.66),
-      melody: gate(i, 0.68, 0.8),
-      overdrive: gate(i, 0.88, 0.96),
+      drums: gate(i, 0.1, 0.22),
+      bass: gate(i, 0.26, 0.38),
+      hats: gate(i, 0.4, 0.52),
+      melody: gate(i, 0.56, 0.7),
+      overdrive: gate(i, 0.8, 0.9),
     };
   }
 

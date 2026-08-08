@@ -66,15 +66,17 @@ export class LightningDirector {
   private backgroundStrike(): void {
     this.target.set((Math.random() - 0.5) * 24, 0, -13 - Math.random() * 6);
     this.spawnBolt(this.target);
-    this.feel.flashPulse(0.3);
-    this.audio.thunder(0.8 + Math.random() * 0.6, 0.3);
+    this.feel.flashPulse(0.45);
+    // Distance-scaled: further bolts arrive later and softer.
+    const distance = 0.5 + Math.random() * 0.7;
+    this.audio.thunder(distance, 0.38 - distance * 0.1);
   }
 
   private fire(brick: BrickState): void {
     this.target.set(brick.x, 0.35, brick.z);
     this.spawnBolt(this.target);
-    this.feel.flashPulse(0.55);
-    this.audio.thunder(0.22, 0.5); // near strike — thunder arrives fast
+    this.feel.flashPulse(0.7);
+    this.audio.thunder(0.05, 0.6); // it hit the COURT — crack is immediate
     this.hooks?.strike(brick);
   }
 

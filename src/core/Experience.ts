@@ -74,6 +74,7 @@ export class Experience {
   readonly wetSurface = new WetSurfaceController();
   readonly loop: Game;
   private weatherBase = 0;
+  private smoothedDarkening = 0;
   /** The one debug GUI instance — shared by ?debug=1 and Settings→Developer. */
   private debugGui: ReturnType<typeof createDebugGui> | null = null;
   private graphicsMode: GraphicsMode = 'AUTO';
@@ -466,11 +467,16 @@ export class Experience {
     const raining =
       this.weather.currentMode === 'RAIN' || this.weather.currentMode === 'THUNDERSTORM';
     this.wetSurface.update(dt, raining, weatherIntensity);
+    // Rain lighting must be CONSISTENT — the tension wave and lightning
+    // flicker feed the raw value, so smooth it hard before it touches the
+    // lights: the storm settles into a steady dim, not a pulsing one.
+    const darkTarget = Math.min(0.55, this.weather.darkening * weatherIntensity);
+    this.smoothedDarkening += (darkTarget - this.smoothedDarkening) * (1 - Math.exp(-1.2 * dt));
     // Compose lighting layers (or hold a debug state for readability checks).
     const lightState: LightingState =
       this.lightDebugIndex >= 0
         ? LIGHT_DEBUG_STATES[this.lightDebugIndex].state
-        : { heavy: this.loop.heavyTint, weather: this.weather.darkening * weatherIntensity };
+        : { heavy: this.loop.heavyTint, weather: this.smoothedDarkening };
     this.lighting.update(lightState, this.scene, this.cfg);
     this.vfx.shake.setting = this.cfg.accessibility.screenShake;
     const shakeOffset = this.vfx.shake.update(dt);

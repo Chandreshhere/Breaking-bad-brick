@@ -18,7 +18,8 @@ export function buildCourtLines(cfg: VisualConfig): THREE.Group {
     color: c.lineColor,
     roughness: 0.6,
     emissive: new THREE.Color(c.lineColor),
-    emissiveIntensity: 0.12,
+    // High enough that the court boundary reads even in the darkest biome.
+    emissiveIntensity: 0.3,
   });
 
   const line = (x: number, z: number, w: number, l: number): void => {

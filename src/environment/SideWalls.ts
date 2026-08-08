@@ -31,6 +31,10 @@ export function buildSideWalls(cfg: VisualConfig): THREE.Group {
 
   const material = new THREE.MeshStandardMaterial({
     color: w.color,
+    // Faint self-light so the wall face never fully swallows into a dark
+    // biome's background — readability floor for the play boundary.
+    emissive: new THREE.Color(w.color),
+    emissiveIntensity: 0.22,
     roughness: 0.85,
     metalness: 0,
     side: THREE.DoubleSide, // the left wall is a mirrored (negative-scale) instance
@@ -48,6 +52,16 @@ export function buildSideWalls(cfg: VisualConfig): THREE.Group {
   left.castShadow = true;
   left.receiveShadow = true;
 
-  group.add(right, left);
+  // Emissive edge strip along each wall's top inner lip, in the biome's
+  // rail accent colour — the court border stays visible in every world,
+  // storm or dark biome alike (bloom picks it up).
+  const stripGeometry = new THREE.BoxGeometry(0.07, 0.07, w.length);
+  const stripMaterial = new THREE.MeshBasicMaterial({ color: cfg.rails.emissive });
+  const rightStrip = new THREE.Mesh(stripGeometry, stripMaterial);
+  rightStrip.position.set(w.innerX + w.lean, w.height + 0.03, 0);
+  const leftStrip = new THREE.Mesh(stripGeometry, stripMaterial);
+  leftStrip.position.set(-(w.innerX + w.lean), w.height + 0.03, 0);
+
+  group.add(right, left, rightStrip, leftStrip);
   return group;
 }

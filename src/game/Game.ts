@@ -105,6 +105,9 @@ export class Game {
   private livesLostThisLevel = 0;
   /** A settings/map overlay is open — global keys must not resume play. */
   private overlayOpen = false;
+  /** Attract mode — the menu plays itself behind the screens. */
+  private demo = false;
+  private demoAccumulator = 0;
   private clearLabelShown = false;
   private clearSignatureFired = false;
   /** Set by Experience — biome/weather swap on level change. */
@@ -168,7 +171,8 @@ export class Game {
     switch (this.state) {
       case 'intro':
       case 'bonuses':
-        return 0.12;
+        // Attract mode: the menu grooves — drums and bass already in.
+        return 0.45;
       case 'gameOver':
       case 'win':
         return 0.18;
@@ -182,9 +186,9 @@ export class Game {
         return 0.25;
       case 'playing': {
         let intensity =
-          0.32 +
+          0.42 +
           this.spectacleTargets.music * 0.15 +
-          this.combo.energy * 0.42 +
+          this.combo.energy * 0.5 +
           this.difficulty.tension * 0.1 +
           (this.units.length > 1 ? 0.1 : 0) +
           Math.min(0.12, (this.levels.level - 1) * 0.03);
@@ -267,6 +271,7 @@ export class Game {
 
   private enterIntro(): void {
     this.setState('intro');
+    this.demo = true; // attract mode runs behind every menu screen
     this.screens.showIntro(
       () => {
         this.audio.unlock();
@@ -336,6 +341,13 @@ export class Game {
   }
 
   private startCountdown(): void {
+    // Leaving attract mode: clear the demo ball and restore a pristine field.
+    if (this.demo) {
+      this.stopDemo();
+      this.dying = [];
+      this.objects.rebuildBricks();
+      this.difficulty.onLevelStart(this.objects.brickField?.aliveCount() ?? 1);
+    }
     this.screens.hideAll();
     // A boss telegraph must never survive into a fresh serve un-telegraphed.
     this.bossAttackMode = 'idle';
@@ -563,6 +575,118 @@ export class Game {
     }
   }
 
+  // ── Attract mode ──────────────────────────────────────────────────────
+  // A self-playing rally behind the menu screens: real physics and brick
+  // destruction VFX, but no score, combo, power-ups, feel impulses, or
+  // life loss — the menu must feel alive, not noisy.
+
+  private stopDemo(): void {
+    if (!this.demo) return;
+    this.demo = false;
+    this.demoAccumulator = 0;
+    for (const unit of this.units) {
+      if (unit.extra) this.objects.removeExtraBall(unit.visual, unit.trail);
+    }
+    this.units = [];
+    const visual = this.objects.ballVisual;
+    if (visual) visual.root.visible = false;
+  }
+
+  private updateDemo(dt: number): void {
+    const cfg = this.cfg;
+    const physics = cfg.game.physics;
+    const visual = this.objects.ballVisual;
+    const field = this.objects.brickField;
+    if (!visual || !field) return;
+
+    // The demo cleared the field — quietly deal a fresh one.
+    if (field.aliveCount() === 0) {
+      this.dying = [];
+      this.objects.rebuildBricks();
+    }
+
+    if (this.units.length === 0) {
+      const angle = (Math.random() * 2 - 1) * 0.45;
+      const speed = physics.baseSpeed * 0.85;
+      visual.root.visible = true;
+      visual.dissolve = 0;
+      this.units = [
+        {
+          body: {
+            x: this.paddleX,
+            z: this.paddleZ - cfg.game.paddle.depth / 2 - cfg.game.ball.radius,
+            vx: Math.sin(angle) * speed,
+            vz: -Math.cos(angle) * speed,
+            speed,
+          },
+          visual,
+          trail: this.objects.trail,
+          extra: false,
+        },
+      ];
+    }
+
+    const ball = this.units[0];
+    // Perfect lazy chase — the demo never loses a ball.
+    this.paddleX += (ball.body.x - this.paddleX) * (1 - Math.exp(-6 * dt));
+    const halfW = cfg.game.paddle.width / 2;
+    const maxX = cfg.walls.innerX - halfW - 0.1;
+    this.paddleX = Math.max(-maxX, Math.min(maxX, this.paddleX));
+
+    const rearWallZ = -cfg.court.length / 2 + 0.15 + cfg.rear.blockD;
+    const radius = cfg.game.ball.radius;
+    const env: PhysicsEnv = {
+      radius,
+      minX: -(cfg.walls.innerX - radius),
+      maxX: cfg.walls.innerX - radius,
+      minZ: rearWallZ + radius,
+      lossZ: physics.lossZ,
+      paddle: {
+        x: this.paddleX,
+        z: this.paddleZ,
+        halfW,
+        halfD: cfg.game.paddle.depth / 2,
+        vx: 0,
+        vz: 0,
+      },
+      maxSpeed: physics.baseSpeed,
+      bricks: this.objects.brickStates,
+      maxBounceAngle: THREE.MathUtils.degToRad(physics.maxBounceAngleDeg),
+      minForwardRatio: physics.minForwardRatio,
+      pierceBricks: false,
+      shieldZ: null,
+    };
+
+    this.demoAccumulator = Math.min(this.demoAccumulator + dt, 0.2);
+    while (this.demoAccumulator >= FIXED_STEP) {
+      this.demoAccumulator -= FIXED_STEP;
+      const events = stepBall(ball.body, FIXED_STEP, env);
+      if (events.hitBrick) {
+        const result = field.hit(events.hitBrick);
+        if (result.destroyed) {
+          this.dying.push({ brick: events.hitBrick, t: 0 });
+          this.impactPos.set(events.hitBrick.x, 0.5, events.hitBrick.z);
+          const points = Math.round(
+            cfg.game.rules.brickScore * BRICK_TYPES[events.hitBrick.type].scoreMult
+          );
+          this.vfx.brickImpact(this.impactPos, `+${points}`, false, 0.2);
+          this.audio.brick(false);
+          visual.pulse(0.8);
+        }
+      } else if (events.hitPaddle) {
+        this.audio.paddle();
+        visual.pulse(0.5);
+      }
+      if (events.lost) {
+        // A demo ball simply comes back for another rally.
+        ball.body.x = this.paddleX;
+        ball.body.z = this.paddleZ - 1;
+        ball.body.vx = (Math.random() - 0.5) * 2;
+        ball.body.vz = -Math.abs(ball.body.vz || physics.baseSpeed * 0.8);
+      }
+    }
+  }
+
   /** Called whenever GameObjects is rebuilt (GUI tweaks, restart). */
   handleRebuild(): void {
     this.dying = [];
@@ -678,6 +802,11 @@ export class Game {
         this.onLevelSignature?.();
       }
       if (this.stateTimer > 2.2) this.finishLevelClear();
+    }
+
+    // Attract mode: the menu plays itself behind the screens.
+    if (this.demo && (this.state === 'intro' || this.state === 'bonuses')) {
+      this.updateDemo(gameDt);
     }
 
     // Paddle width chases the RACKET XL target — no model swap.

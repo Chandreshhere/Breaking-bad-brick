@@ -1,12 +1,385 @@
-# Ace Breaker
+<div align="center">
 
-A production-quality, browser-based 3D brick-breaker inspired by the Lacoste
-"Ace Breaker" Roland-Garros experience — rebuilt **entirely procedurally in
-Three.js**. No Blender, no GLTF/GLB, no downloaded assets: every piece of the
-stadium (clay court, markings, leaning side walls, light rails, stepped
-stands, instanced seats, rear structure) is generated in code.
+```
+ █████╗  ██████╗███████╗    ██████╗ ██████╗ ███████╗ █████╗ ██╗  ██╗███████╗██████╗
+██╔══██╗██╔════╝██╔════╝    ██╔══██╗██╔══██╗██╔════╝██╔══██╗██║ ██╔╝██╔════╝██╔══██╗
+███████║██║     █████╗      ██████╔╝██████╔╝█████╗  ███████║█████╔╝ █████╗  ██████╔╝
+██╔══██║██║     ██╔══╝      ██╔══██╗██╔══██╗██╔══╝  ██╔══██║██╔═██╗ ██╔══╝  ██╔══██╗
+██║  ██║╚██████╗███████╗    ██████╔╝██║  ██║███████╗██║  ██║██║  ██╗███████╗██║  ██║
+╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+```
 
-## Status
+### ⛹ A 3D arcade brick-breaker played on a floodlit clay court. ⛹
+
+![Three.js](https://img.shields.io/badge/three.js-r180-000000?style=for-the-badge&logo=three.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![WebGL](https://img.shields.io/badge/WebGL-2.0-990000?style=for-the-badge&logo=webgl&logoColor=white)
+
+![Assets](https://img.shields.io/badge/EXTERNAL%203D%20ASSETS-0-efd42e?style=for-the-badge)
+![Worlds](https://img.shields.io/badge/WORLDS-6-35e0ff?style=for-the-badge)
+![Bricks](https://img.shields.io/badge/BRICK%20TYPES-8-7dff6a?style=for-the-badge)
+![Bonuses](https://img.shields.io/badge/POWER--UPS-6-ff8c3a?style=for-the-badge)
+![Levels](https://img.shields.io/badge/LEVELS-ENDLESS-ff3ad8?style=for-the-badge)
+
+🟨🟨🟩🟩🟩🟩⬜⬜🟦🟦🟦🟦🟧🟧🟧🟧🟪🟪🟪🟪🟥🟥🟥🟥⬜⬜🟩🟩🟩🟩🟨🟨
+
+</div>
+
+Every polygon on screen is **generated in code**. No Blender, no GLTF/GLB, no
+downloaded textures, no audio files — the stadium, the bricks, the rain, the
+lightning, the sound effects and the 140 BPM soundtrack are all procedural.
+
+---
+
+## ▶ QUICK START
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+```
+
+```bash
+npm run build      # tsc --noEmit && vite build
+npm run typecheck  # types only
+npm run preview    # serve the production build
+```
+
+---
+
+## 🎮 HOW TO PLAY
+
+You are the paddle at the bottom of the court. The ball never stops. Keep it
+alive, break every brick, advance forever.
+
+```
+════════════════════════ FAR WALL ════════════════════════
+
+    ████  ▓▓▓▓  ████  ▒▒▒▒  ████  ▓▓▓▓  ████      <- the field
+    ▓▓▓▓  ████  ░░░░  ████  ░░░░  ████  ▓▓▓▓
+    ████  ▒▒▒▒  ████  ▓▓▓▓  ████  ▒▒▒▒  ████
+
+                       .
+                         .   (o)   <- the ball, always moving
+                            .
+
+    - - - - - -  PLAYER ZONE (nearest ~28% of court)  - - - - - -
+
+                    ▂▂▂▂▂▂▂▂▂▂▂▂   <- you
+
+XXXXXXXXXXXXX  LOSS LINE — the ball crosses this, you lose a life  XXXXXXXXXXXXX
+```
+
+### Controls
+
+| Action | Mouse / Keyboard | Touch |
+|:--|:--|:--|
+| **Move paddle** | Click & **hold**, then drag | Press & drag |
+| **Serve / restart** | Click or <kbd>Space</kbd> | Tap |
+| **Dash** | <kbd>Shift</kbd> or **right-click** | Double-tap |
+| **Pause** | <kbd>P</kbd> or <kbd>Esc</kbd> | Pause button |
+| **Mute** | <kbd>M</kbd> | — |
+
+> **The paddle moves in 2D.** You are not stuck on a rail — you can move
+> forward and back inside the player zone. That matters, because:
+
+- **Where you hit steers the ball.** Centre = straight, edges send it up to
+  **58°** off vertical.
+- **Your movement transfers into the ball.** Pushing *forward* on contact adds
+  energy; sliding *sideways* curves the shot.
+- **Dash** is a 0.16 s burst toward the pointer with a cooldown. The paddle's
+  collision face is swept along its own velocity, so a dash into the ball can
+  never phase through it.
+
+### The impact grammar
+
+Every collision is loud on purpose. One brick death fires all of this:
+
+```
+    ████  ▓▓▓▓        ▒▒▒▒  ████        <- brick gone
+                 \  |  /
+    ████  ▒▒▒▒  -- (✷) --  ▓▓▓▓         <- white-hot flash, GPU sparks,
+                 /  |  \                   impact light, camera trauma,
+                                           hitstop, "+300" score pop
+```
+
+---
+
+## 🔁 THE LOOP
+
+```mermaid
+flowchart LR
+    A([INTRO]):::menu --> B([BONUSES]):::menu
+    B --> C([3 · 2 · 1]):::count
+    C --> D([PLAYING]):::play
+    D -->|ball crosses loss line| E([LIFE LOST]):::bad
+    E -->|lives remain| C
+    E -->|no lives| F([GAME OVER]):::bad
+    D -->|field cleared| G([LEVEL CLEAR]):::good
+    G -->|level + 1| C
+    F --> A
+
+    classDef menu  fill:#1b1b1b,stroke:#efd42e,stroke-width:2px,color:#efd42e
+    classDef count fill:#1b1b1b,stroke:#35e0ff,stroke-width:2px,color:#35e0ff
+    classDef play  fill:#0c2717,stroke:#7dff6a,stroke-width:2px,color:#7dff6a
+    classDef good  fill:#2b2410,stroke:#ffd21e,stroke-width:2px,color:#ffd21e
+    classDef bad   fill:#2b1010,stroke:#ff5a3a,stroke-width:2px,color:#ff5a3a
+```
+
+You start with **3 lives**. Score and lives carry across levels — only
+`GAME OVER` sends you back to level 1.
+
+Levels are **seeded and deterministic**: the same level number always builds
+the same layout, drawn from **11 formation templates** — `PYRAMID`,
+`DIAMOND`, `SPIRAL`, `TUNNEL`, `FORTRESS`, `WINGS`, `SNAKE`, `RINGS`,
+`COLUMNS`, `CHECKERBOARD`, `RANDOM_CLUSTER`. Brick variety unlocks as you go
+(level 1 is pure `NORMAL`, level 4+ is the full mix), and levels 3 and up add a
+second reinforcement wave after the first is cleared.
+
+---
+
+## 🧱 BRICK BESTIARY
+
+Every type looks like what it does — you should never need this table twice.
+
+| | Type | HP | Score | Behaviour |
+|:--|:--|:--:|:--:|:--|
+| ![](https://img.shields.io/badge/■-1d5e34?style=flat-square) | **NORMAL** | 1 | ×1 | Green. Breaks. That's the job. |
+| ![](https://img.shields.io/badge/■-9aa8a0?style=flat-square) | **ARMORED** | 3 | ×2 | Brushed steel. Flashes and darkens with each hit. |
+| ![](https://img.shields.io/badge/■-ff7a1a?style=flat-square) | **EXPLOSIVE** | 1 | ×1.5 | Pulsing orange core — **chains into its neighbours**. |
+| ![](https://img.shields.io/badge/■-1a5560?style=flat-square) | **MOVING** | 1 | ×1.5 | Whole rows oscillate side to side. Lead your shot. |
+| ![](https://img.shields.io/badge/■-7fd0c9?style=flat-square) | **GHOST** | 1 | ×2 | Phases translucent ↔ solid. **Intangible while faded.** |
+| ![](https://img.shields.io/badge/■-ffce3a?style=flat-square) | **MULTIPLIER** | 1 | ×3 | Gold. Triple score. Prioritise it during a combo. |
+| ![](https://img.shields.io/badge/■-39d7a8?style=flat-square) | **POWERUP** | 1 | ×1 | Teal. **Guaranteed** capsule drop. |
+| ![](https://img.shields.io/badge/■-c04af0?style=flat-square) | **BOSS** | 24 | ×10 | Giant pulsing purple core. See below. |
+
+---
+
+## 💊 POWER-UPS
+
+**22%** of destroyed bricks drop a colour-coded glowing capsule. Catch it with
+the paddle — capsules are only catchable mid-rally.
+
+| | Bonus | Duration | Effect |
+|:--|:--|:--:|:--|
+| ![](https://img.shields.io/badge/RACKET%20XL-b06aff?style=for-the-badge) | Racket XL | 10 s | Paddle smoothly lerps to **1.65×** width. |
+| ![](https://img.shields.io/badge/MULTIBALL-ff8c3a?style=for-the-badge) | Multiball | instant | **+2 real balls.** You only lose a life when the *last* one drops. |
+| ![](https://img.shields.io/badge/HEAVY%20BALL-ff5fd2?style=for-the-badge) | Heavy Ball | 8 s | **Pierces** bricks, 1.8× scale, the ball itself catches fire. |
+| ![](https://img.shields.io/badge/DEFENSIVE%20WALL-4aa3ff?style=for-the-badge) | Defensive Wall | 8 s | A glowing barrier behind the paddle. One free save. |
+| ![](https://img.shields.io/badge/SMASH-7dff6a?style=for-the-badge) | Smash | instant | A light beam wipes the **nearest brick row**, staggered. |
+| ![](https://img.shields.io/badge/POWER%20SHOT-ff6a6a?style=for-the-badge) | Power Shot | next hit | Your next paddle contact fires at **115% max speed**. |
+
+---
+
+## 🔥 COMBO & OVERDRIVE
+
+Consecutive brick kills build a combo. **Paddle contact does not reset it** —
+only losing a ball, or letting **6 seconds** pass without a kill.
+
+```
+       5 hits   COMBO  [████░░░░░░░░]   x2   HOT
+      12 hits   COMBO  [███████░░░░░]   x3   ON FIRE
+      25 hits   COMBO  [██████████░░]   x4   BLAZING
+      40 hits   COMBO  [████████████]   x5   OVERDRIVE   (8 s)
+```
+
+| Tier | Hits | Multiplier |
+|:--|:--:|:--:|
+| ![](https://img.shields.io/badge/HOT-ffb347?style=for-the-badge) | 5 | **×2** |
+| ![](https://img.shields.io/badge/ON%20FIRE-ff7a2e?style=for-the-badge) | 12 | **×3** |
+| ![](https://img.shields.io/badge/BLAZING-ff4a4a?style=for-the-badge) | 25 | **×4** |
+| ![](https://img.shields.io/badge/OVERDRIVE-efd42e?style=for-the-badge) | 40 | **×5** for 8 s |
+
+Combo emits a `0..1` energy value that the whole game consumes: hotter ball
+shimmer, longer trails, bigger spark bursts, sustained bloom, a higher music
+floor. **It never changes ball speed** — the feel escalates, the difficulty
+doesn't cheat. Entering `OVERDRIVE` triggers slow-motion, a sawtooth riser, and
+forces a lightning strike.
+
+---
+
+## 🏆 SCORING
+
+```
+    POINTS  =  100  ×  brick multiplier  ×  combo multiplier
+```
+
+```diff
++ Clear a level without losing a ball ......... +500 NO-MISS BONUS
+```
+
+A gold `MULTIPLIER` brick (×3) taken during `OVERDRIVE` (×5) is worth
+`100 × 3 × 5` = **1500**.
+
+---
+
+## 🌍 THE SIX WORLDS
+
+The arena rotates **every 3 levels**. The court, lines, walls and rails stay
+identical — the entire surrounding world is rebuilt, not retinted.
+
+| | World | Weather | Signature |
+|:--|:--|:--|:--|
+| ![](https://img.shields.io/badge/CLAY%20COURT-d98a4f?style=for-the-badge) | Night session | clear | Floodlit orange clay, stepped stands, ~1,200 instanced seats. |
+| ![](https://img.shields.io/badge/NEON%20NIGHT-4fc3ff?style=for-the-badge) | Electric rally | **rain + lightning** | Black court, cyan neon lines, cold blue light. |
+| ![](https://img.shields.io/badge/INFERNO-ff5a3a?style=for-the-badge) | Embers & ash | rising embers | Volcanic red, lava trim, ember light. |
+| ![](https://img.shields.io/badge/LOTUS%2F%2FOS-35e0ff?style=for-the-badge) | Holographic court | data motes | Holographic lotus centrepiece, grid walls, floating data panels. |
+| ![](https://img.shields.io/badge/NEON%20ARCADE-ffd21e?style=for-the-badge) | Insert coin | confetti | Procedural cabinets with pixel-art screens, HI-SCORE marquee. |
+| ![](https://img.shields.io/badge/COMIC%20IMPACT-ff3ad8?style=for-the-badge) | Bam! Pow! Smash! | halftone | Comic panels, extruded stars, 3D **BAM!/POW!/SMASH!** word slams. |
+
+Prefer one arena? The intro screen's **ARENA** button locks every level to a
+single world — applied instantly as a live preview behind the menu. `AUTO CYCLE`
+is the default rotation.
+
+### ⛈ Weather is a real system
+
+Rain is **one instanced draw call** of elongated streaks, all motion computed
+in the vertex shader — per-streak length, speed and opacity variation, three
+depth layers, smoothed wind with gusts. The clay visibly **wets**: roughness
+drops and the surface darkens while it rains.
+
+Storms escalate to **gameplay lightning**. A strike telegraphs for 300–700 ms —
+electric crackle, blue flicker on the marked brick, a rising charge tone — then
+lands for real damage plus radial splash. Armour can soak it. The boss takes a
+controlled hit. Thunder arrives distance-delayed.
+
+---
+
+## 👑 BOSS LEVELS
+
+**Every 4th level.** A giant pulsing purple core — **24 HP**, ×10 score — with
+an armoured guard ring and explosive flank columns.
+
+```
+              ▓▓▓▓  ▓▓▓▓  ▓▓▓▓  ▓▓▓▓  ▓▓▓▓         <- armoured guard ring
+        ██                                  ██
+        ██          ╔══════════╗            ██     <- explosive flanks
+        ██          ║  ██████  ║            ██
+        ██          ║  ██████  ║            ██     <- 24 HP boss core
+        ██          ╚══════════╝            ██
+        ██                                  ██
+
+   ██████████████████████████████████████████████   <- LASER TELEGRAPH
+              ~1 s warning, then it fires
+```
+
+Three phases with announcements and `BOSS`-preset impacts. The boss telegraphs
+a laser as a red warning bar across the paddle's row — **move or be stunned**.
+`HEAVY BALL` chips the boss instead of piercing it.
+
+---
+
+## 🎛 SETTINGS & ACCESSIBILITY
+
+Reachable from the gear icon on the intro and pause screens. Everything
+persists in `localStorage`.
+
+| Setting | Options |
+|:--|:--|
+| **Music / SFX volume** | 0–100% |
+| **Screen shake** | `FULL` · `REDUCED` · `OFF` |
+| **Bloom strength** | live slider |
+| **Rain quality** | `LOW` · `MEDIUM` · `HIGH` |
+| **Graphics** | `AUTO` · `LOW` · `MEDIUM` · `HIGH` |
+
+**`screenShake: OFF` removes all camera motion** — positional, rotational and
+FOV punches — while keeping every flash, particle and audio cue. Feedback is
+never lost, only the motion.
+
+**`AUTO` graphics** picks a starting tier from device hints (touch, cores,
+memory) and steps *down* when smoothed frame time stays above ~26 ms for two
+seconds. It never steps back up, so it cannot oscillate. Tiers scale pixel-ratio
+cap (1 / 1.5 / 2), MSAA samples (0 / 2 / 4), bloom resolution
+(0.45× / 0.6× / 1×), shadows (off / 1024 PCF / 2048 PCF-soft), rain density and
+particle counts.
+
+---
+
+## 🎧 SOUND
+
+Zero audio files. `AudioFx.ts` is oscillators and filtered noise — distinct
+voices for paddle, wall and brick (heavy bricks get a low sawtooth thump),
+shield, power-up arpeggio, serve swoosh, and win/loss stingers.
+
+`Music.ts` synthesizes a **140 BPM trap loop** across six stems on independent
+gain buses — detuned pad, kick/snare, gliding 808 subs, velocity hats with
+rolls, minor pluck arp, sawtooth overdrive stabs — scheduled on a 16-step grid
+by a look-ahead scheduler. A `musicIntensity` value (from game state, combo
+energy, multiball, level and overdrive) gates the stems, and ramps only apply
+**at bar boundaries** so it never sounds like a fader.
+
+---
+
+## 🛠 DEV
+
+| Key / param | Effect |
+|:--|:--|
+| <kbd>1</kbd> / <kbd>2</kbd> | Intro / gameplay camera state |
+| <kbd>O</kbd> | Dev-only OrbitControls free camera (snaps back on close) |
+| <kbd>L</kbd> | Cycle lighting debug: `NORMAL` → `DARK` → `STORM` → `HEAVY` → `STORM+HEAVY` |
+| `?debug=1` | Show the lil-gui panel (hidden during normal play) |
+| `?cam=gameplay\|intro` | Force a camera state |
+| `?shot=1` | Silent mode — skips overlays, for the screenshot harness |
+
+The lil-gui panel is also reachable in dev builds via **Settings → 3D SCENE
+CONTROLS**. Camera, lighting, fog and bloom apply live; structural values
+rebuild the stadium on release.
+
+---
+
+## 📁 ARCHITECTURE
+
+```
+src/
+├── config/visual.config.ts    # EVERY visual number lives here (VISUAL_CONFIG)
+├── core/
+│   ├── Experience.ts          # orchestrator — owns the loop and the directors
+│   ├── CameraRig.ts  Lighting.ts  Quality.ts  DebugGui.ts
+├── environment/               # one module per stadium element, all procedural
+│   ├── Stadium.ts             # composes + rebuilds/disposes everything
+│   ├── Worlds.ts              # the six world builders
+│   ├── EnvironmentDirector.ts # biome-for-level, applies themable config
+│   ├── ClayMaterial.ts        # onBeforeCompile noise-driven clay
+│   ├── Court.ts  CourtLines.ts  SideWalls.ts  LightRails.ts
+│   └── Stands.ts  Seats.ts  RearStructure.ts  BrandingPlanes.ts
+├── game/
+│   ├── Game.ts                # state machine + rules
+│   ├── Physics.ts             # fixed 1/120 s deterministic X/Z arcade physics
+│   ├── LevelDirector.ts       # seeded levels, waves, boss specs
+│   ├── FormationGenerator.ts  # the 11 layout templates
+│   ├── BrickType.ts  Bricks.ts  Ball.ts  Paddle.ts  Input.ts
+│   └── Combo.ts  Powerups.ts  Difficulty.ts  Spectacle.ts
+├── effects/
+│   ├── GameFeel.ts            # THE single owner of every feel impulse
+│   ├── Vfx.ts                 # facade — gameplay reports what, VFX decides how
+│   ├── RainSystem.ts  RainSplashSystem.ts  WetSurfaceController.ts
+│   ├── LightningBolt.ts  LightningDirector.ts  Weather.ts
+│   └── Particles.ts  BallTrail.ts  ImpactLights.ts  CameraShake.ts  PostProcessing.ts
+├── audio/AudioFx.ts  Music.ts
+└── ui/Screens.ts  Hud.ts
+```
+
+**Coordinate system:** `X` = left/right, `Y` = up, `Z` = near(+)/far(−). Court
+centre at the origin, court surface at `Y = 0`. All gameplay runs on the X/Z
+plane at a fixed **1/120 s** timestep, so physics is frame-rate independent and
+deterministic.
+
+**Two rules the codebase enforces:**
+
+1. **No effect without meaning.** Every flash, shake and particle maps to a real
+   game event. `GameFeel.ts` is the only writer of camera FOV and post values —
+   impulses compose with clamps and decay to exact neutral. Nothing stays on.
+2. **Every visual number lives in `VISUAL_CONFIG`.** Modules re-read config each
+   frame, so the whole game is live-tunable from one file.
+
+---
+
+<details>
+<summary><b>📜 BUILD LOG — 34 phases</b> (click to expand)</summary>
+
+<br>
+
+**Phases 1–12 — the core game**
 
 - ✅ **Phase 1 — Procedural static environment**: court slab with procedural
   clay shader, real line geometry, extruded side walls, emissive gold trim
@@ -28,9 +401,6 @@ stands, instanced seats, rear structure) is generated in code.
   hit-position-steered paddle bounces (edge hits send the ball up to ~58°),
   forward-motion floor to kill horizontal loops, per-brick speed-up, lives,
   score, and a state machine (ready → playing → lifeLost → gameOver/win).
-  Click & hold to move the paddle, click or Space to serve/restart. Bricks
-  die with a squash-and-shrink (full impact VFX come in Phase 7). Minimal
-  DOM HUD (lives/score/messages) stands in until the Phase 9 UI.
 - ✅ **Phase 6 — The moving sun**: collision-reactive ball light (brick >
   paddle > wall pulse strengths with exponential decay), idle shimmer,
   speed-reactive pooled sprite trail, bloom rebalance. All live-tunable —
@@ -82,7 +452,7 @@ stands, instanced seats, rear structure) is generated in code.
   (idempotent endGame, mid-step win guards), and full teardown (composer,
   audio context, listeners).
 
-**All 12 core phases complete.** Arcade expansion (13–24) in progress:
+**Phases 13–24 — arcade expansion**
 
 - ✅ **Phase 13 — Advanced paddle control**: free X/Z movement inside a
   player zone (closest ~28% of the court, clamped), smooth damped 2D chase,
@@ -164,7 +534,7 @@ stands, instanced seats, rear structure) is generated in code.
   ramps applied **at bar boundaries** only. Routed through the master bus,
   so the life-lost duck/low-pass and mute govern music automatically.
 
-Arcade roadmap 25–34 in progress:
+**Phases 25–34 — the show**
 
 - ✅ **Phase 25 — Lighting architecture rebuild**: `LightingDirector`
   composes five independent layers (base environment / gameplay
@@ -245,14 +615,12 @@ Arcade roadmap 25–34 in progress:
   comic word burst), then a results screen at 2.2s with a rapid score
   count-up and cascading stats: CLEAR TIME, MAX COMBO, and a +500
   NO-MISS BONUS for deathless clears.
-
 - ✅ **Arena select**: the intro menu's ARENA button opens a picker with
   all six worlds (plus AUTO CYCLE, the default 3-level rotation).
   Picking one locks every level to that world — applied instantly as a
   live preview behind the menu. HUD announcements (waves, combo tiers,
   power-ups) now play through a single-slot queue with a minimum read
   time, so rapid events never overlap on screen.
-
 - ✅ **Graphics quality tiers**: LOW / MEDIUM / HIGH scale exactly what
   hurts small and integrated GPUs — the pixel-ratio cap (1 / 1.5 / 2),
   composer MSAA samples (0 / 2 / 4), UnrealBloom internal resolution
@@ -273,44 +641,22 @@ the boss telegraph (beams now carry priority), and lightning bolt material
 leaks — plus chain-kills fizzling on death, difficulty baselines at
 session/wave start, and boss telegraphs resetting across serves.
 
-## Run
+</details>
 
-```bash
-npm install
-npm run dev        # http://localhost:5173
-npm run typecheck  # tsc --noEmit
-npm run build
-```
+---
 
-## Controls (dev)
+<div align="center">
 
-- `1` — intro camera state, `2` — gameplay camera state
-- `o` — toggle a dev-only OrbitControls free camera (snaps back on close)
-- lil-gui panel (dev builds): camera, lighting, fog, bloom live; structural
-  values rebuild the stadium on release
-- URL params: `?cam=gameplay|intro` selects the camera state, `?shot=1`
-  hides the GUI (used by the screenshot harness)
+**Branding note** — all wordmarks are replacement branding ("ACE BREAKER").
+Proprietary Lacoste marks and assets are not reproduced. Inspired by the
+Lacoste × Roland-Garros web experience, rebuilt from scratch.
 
-## Architecture
+🟨🟨🟩🟩🟩🟩⬜⬜🟦🟦🟦🟦🟧🟧🟧🟧🟪🟪🟪🟪🟥🟥🟥🟥⬜⬜🟩🟩🟩🟩🟨🟨
 
 ```
-src/
-├── config/visual.config.ts   # every visual number lives here (VISUAL_CONFIG)
-├── core/                     # Experience (orchestrator), CameraRig, Lighting, DebugGui
-├── environment/              # one module per stadium element, all procedural
-│   ├── Stadium.ts            # composes + rebuilds/disposes everything
-│   ├── ClayMaterial.ts       # onBeforeCompile noise-driven clay
-│   ├── Court.ts / CourtLines.ts
-│   ├── SideWalls.ts          # Shape + ExtrudeGeometry profile walls
-│   ├── LightRails.ts         # emissive trim (bloom feeds on these)
-│   ├── Stands.ts / Seats.ts  # stepped risers + InstancedMesh seats
-│   ├── RearStructure.ts / BrandingPlanes.ts / NetLine.ts
-│   └── materials.ts          # shared shader-injection helpers
-└── effects/PostProcessing.ts # RenderPass → bloom → OutputPass → vignette (MSAA target)
+             (o)
+        ▂▂▂▂▂▂▂▂▂▂▂▂
+         GOOD LUCK
 ```
 
-Coordinate system: X = left/right, Y = up, Z = near(+)/far(−); court centre
-at the origin, court surface at Y = 0. Gameplay will run on the X/Z plane.
-
-Branding note: all wordmarks are replacement branding ("ACE BREAKER") —
-proprietary Lacoste marks/assets are not reproduced.
+</div>
