@@ -52,7 +52,11 @@ export const VISUAL_CONFIG = {
       fullAspect: 0.62, // …and is fully portrait by here
       position: [0, 18.2, 10.6] as Vec3,
       target: [0, 0.3, -1.6] as Vec3,
-      fitHalfWidth: 7.05, // world half-width that must span the screen
+      // Fit the *play* area (line-to-line), not the whole slab. Fitting the
+      // slab left the court small with a dead stand band above and a dead
+      // apron band below; cropping the slab edge and the side walls trades
+      // scenery nobody plays on for a much bigger court.
+      fitHalfWidth: 6.0,
       maxFov: 82,
     },
   },

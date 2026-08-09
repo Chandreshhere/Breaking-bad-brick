@@ -45,6 +45,21 @@ const CSS = /* css */ `
   border: 3px dashed var(--c); border-radius: 50%; display: grid; place-items: center; }
 .acb-ring svg { width: 46%; height: 46%; }
 .acb-bonus-label { font-size: clamp(11px, 1.1vw, 16px); letter-spacing: 0.14em; color: #f2edda; }
+
+/* Portrait: the absolute landscape layout collapses on a phone — the CTA
+   lands on top of the heading. Stack it instead, and put the button at the
+   bottom where a thumb actually reaches. */
+@media (max-aspect-ratio: 4/5) {
+  .acb-bonus-screen { display: flex; flex-direction: column; }
+  .acb-bonus-head { position: static; margin: 9vh 7% 0; font-size: clamp(26px, 7.5vw, 44px); }
+  .acb-bonus-row { position: static; margin: 5vh 7% 0; display: grid;
+    grid-template-columns: 1fr 1fr; gap: 4vh 4%; justify-items: center; }
+  .acb-bonus { min-width: 0; gap: 12px; }
+  .acb-ring { width: clamp(64px, 19vw, 104px); height: clamp(64px, 19vw, 104px); }
+  .acb-bonus-label { font-size: clamp(10px, 3vw, 14px); text-align: center; }
+  .acb-bonus-cta { position: static; margin: auto 7% 0; padding-bottom: calc(4vh + env(safe-area-inset-bottom, 0px));
+    display: flex; justify-content: center; }
+}
 .acb-center { position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 28px; text-align: center;
   /* Full-screen flex box: let empty space pass clicks to siblings (gear). */
@@ -314,14 +329,14 @@ export class Screens {
       </div>`
     ).join('');
     const el = document.createElement('div');
-    el.className = 'acb-screen';
+    el.className = 'acb-screen acb-bonus-screen';
     el.innerHTML = `
       <div class="acb-wordmark">ACE BREAKER</div>
       <div class="acb-bonus-head">6 BONUSES<br /><em>TO BOOST YOUR GAME</em></div>
+      <div class="acb-bonus-row">${items}</div>
       <div class="acb-bonus-cta">
         <button class="acb-pill" data-action="start">${BALL_SVG}START GAME</button>
-      </div>
-      <div class="acb-bonus-row">${items}</div>`;
+      </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="start"]')!.onclick = onStart;
     this.show(el);
   }
