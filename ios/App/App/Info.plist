@@ -23,7 +23,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<string>ca-app-pub-4951837849307649~3144221393</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSUserTrackingUsageDescription</key>

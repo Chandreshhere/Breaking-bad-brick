@@ -8,7 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * you want something else. Everything else here is safe to revise later.
  */
 const config: CapacitorConfig = {
-  appId: 'in.synquic.breakingbadbrick',
+  appId: 'com.breakingbadbrick.game',
   appName: 'Breaking Bad Brick',
   webDir: 'dist',
 

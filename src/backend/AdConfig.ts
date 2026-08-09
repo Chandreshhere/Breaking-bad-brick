@@ -38,8 +38,16 @@ function platform(): 'android' | 'ios' {
 export function adConfig(): AdConfig {
   const env = import.meta.env;
   const p = platform();
-  const appId = env['VITE_ADMOB_APP_ID'] as string | undefined;
-  const rewardedId = env['VITE_ADMOB_REWARDED_ID'] as string | undefined;
+
+  // Android and iOS are separate AdMob apps with separate unit ids, so the
+  // real ids are per-platform. Using one platform's unit on the other simply
+  // never fills.
+  const appId = env[p === 'ios' ? 'VITE_ADMOB_APP_ID_IOS' : 'VITE_ADMOB_APP_ID_ANDROID'] as
+    | string
+    | undefined;
+  const rewardedId = env[
+    p === 'ios' ? 'VITE_ADMOB_REWARDED_ID_IOS' : 'VITE_ADMOB_REWARDED_ID_ANDROID'
+  ] as string | undefined;
 
   // Real ids only in a production build. A dev build that accidentally
   // carried live ids would be serving real ads to the developer.

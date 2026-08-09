@@ -56,15 +56,19 @@ All of it no-ops on web, so there is one path rather than two.
 
 ## AdMob
 
-| | |
-|:--|:--|
-| Publisher | `pub-4951837849307649` |
-| Android app | `ca-app-pub-4951837849307649~8549571254` — in `AndroidManifest.xml` |
-| Rewarded unit | `ca-app-pub-4951837849307649/8476439121` |
+Publisher `pub-4951837849307649`. Android and iOS are **separate AdMob apps**
+with separate unit ids — one platform's unit simply never fills on the other.
 
-The **app id lives in the manifest** because the SDK throws on startup
-without it. The **unit id comes from `VITE_ADMOB_REWARDED_ID`** and defaults
-to Google's test unit; `AdConfig` also refuses real ids in a dev build.
+| | Android | iOS |
+|:--|:--|:--|
+| App id | `…~8549571254` | `…~3144221393` |
+| Rewarded unit | `…/8476439121` | `…/8357999563` |
+| App id lives in | `AndroidManifest.xml` | `Info.plist` |
+
+The **app ids live in the native manifests** because the SDKs read them there
+and throw on startup without them. The **unit ids come from the environment**
+(`VITE_ADMOB_REWARDED_ID_ANDROID` / `_IOS`) and default to Google's test
+units; `AdConfig` also refuses real ids in a dev build.
 
 That split is deliberate. Serving live ads to yourself is the classic way to
 lose an AdMob account — Google cannot distinguish your testing from click
@@ -76,12 +80,10 @@ ad finished; coins arrive when AdMob calls the `admobSsv` function.
 
 ### Still needed
 
-- [ ] An **iOS app in AdMob** — apps are per-platform, and the ids above are
-      Android's. Put its id in `ios/App/App/Info.plist` as
-      `GADApplicationIdentifier` (currently Google's test id).
-- [ ] Point the rewarded unit's **server-side verification** at
+- [ ] Point **both** rewarded units' **server-side verification** at
       `https://us-central1-<project-id>.cloudfunctions.net/admobSsv`
-- [ ] Set `VITE_ADMOB_REWARDED_ID` in the production environment only
+- [ ] Set `VITE_ADMOB_REWARDED_ID_ANDROID` / `_IOS` in the production
+      environment only
 - [ ] **UMP SDK** for EU consent — the in-game gate blocks ads until answered
       but does not emit the TCF strings networks require
 
@@ -89,8 +91,8 @@ ad finished; coins arrive when AdMob calls the `admobSsv` function.
 
 ## Before a store release
 
-- [ ] Change `appId` in `capacitor.config.ts` if `in.synquic.breakingbadbrick`
-      is not what you want. **It is permanent once published.**
+- [ ] `appId` is `com.breakingbadbrick.game`. Change it now if you want
+      something else — **it is permanent once published.**
 - [ ] Android signing keystore — **back it up permanently**. Lose it and the
       listing can never be updated again.
 - [ ] Apple signing: team, bundle id, provisioning

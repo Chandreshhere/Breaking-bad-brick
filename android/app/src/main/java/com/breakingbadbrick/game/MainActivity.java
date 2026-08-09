@@ -1,4 +1,4 @@
-package in.synquic.breakingbadbrick;
+package com.breakingbadbrick.game;
 
 import com.getcapacitor.BridgeActivity;
 

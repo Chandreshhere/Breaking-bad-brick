@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Breaking Bad Brick</string>
     <string name="title_activity_main">Breaking Bad Brick</string>
-    <string name="package_name">in.synquic.breakingbadbrick</string>
-    <string name="custom_url_scheme">in.synquic.breakingbadbrick</string>
+    <string name="package_name">com.breakingbadbrick.game</string>
+    <string name="custom_url_scheme">com.breakingbadbrick.game</string>
 </resources>

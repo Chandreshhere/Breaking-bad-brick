@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "in.synquic.breakingbadbrick"
+    namespace = "com.breakingbadbrick.game"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "in.synquic.breakingbadbrick"
+        applicationId "com.breakingbadbrick.game"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
