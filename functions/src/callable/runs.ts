@@ -17,6 +17,7 @@ import {
   writeBestEntry,
 } from '../domain/leaderboards/boards';
 import { attemptRef, dailyForDate, readAttempt } from '../domain/dailies/daily';
+import { MISSIONS, runValueFor, worldsUnlockedAt } from '../domain/missions/missions';
 
 const MODES = ['ENDLESS', 'DAILY'] as const;
 type Mode = (typeof MODES)[number];
@@ -169,6 +170,9 @@ export const submitRun = onCall(
         // The only place a run may add currency.
         next.wallet.coins += coins;
         next.wallet.lifetimeCoinsEarned += coins;
+        // Worlds unlock from the deepest level ever reached. Derived from
+        // the validated run, never claimed by the client.
+        next.inventory.unlockedWorlds = worldsUnlockedAt(next.stats.bestLevel);
         next.updatedAt = Date.now();
 
         // ── writes from here ────────────────────────────────────────────
@@ -212,6 +216,18 @@ export const submitRun = onCall(
           submittedAt: Date.now(),
           validation: { status: verification },
         });
+
+        // Mission progress is a high-water mark computed from the run, so a
+        // client cannot assert completion. Claiming the reward is separate.
+        for (const def of MISSIONS) {
+          const value = runValueFor(def, claim);
+          if (value <= 0) continue;
+          tx.set(
+            col.players().doc(uid).collection('missions').doc(def.id),
+            { id: def.id, value: Math.max(value, 0), target: def.target, updatedAt: Date.now() },
+            { merge: true }
+          );
+        }
 
         return { player: next, coinsAwarded: coins, verification, ranked };
       });

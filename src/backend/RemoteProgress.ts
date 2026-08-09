@@ -119,6 +119,24 @@ export class RemoteProgress implements RemoteProgressApi {
     return res;
   }
 
+  /** Records consent. Queued when offline so the choice is never lost. */
+  async setConsent(ads: boolean, analytics: boolean): Promise<void> {
+    if (!this.enabled) return;
+    if (!this.online) {
+      this.enqueue('consent', { ads, analytics });
+      return;
+    }
+    await this.api.consent(ads, analytics);
+  }
+
+  exportData(): Promise<unknown | null> {
+    return this.online ? this.api.exportData() : Promise.resolve(null);
+  }
+
+  deleteAccount(): Promise<{ ok: boolean } | null> {
+    return this.online ? this.api.deleteAccount() : Promise.resolve(null);
+  }
+
   leaderboard(board: string, limit = 25): Promise<LeaderboardPage | null> {
     if (!this.online) return Promise.resolve(null);
     return this.api.leaderboard(board, limit);
@@ -168,6 +186,9 @@ export class RemoteProgress implements RemoteProgressApi {
             await this.outbox.remove(item.id);
             this.onRemoteProfile?.(res);
           }
+        } else if (item.op === 'consent') {
+          const c = item.payload as { ads: boolean; analytics: boolean };
+          if (await this.api.consent(c.ads, c.analytics)) await this.outbox.remove(item.id);
         } else if (item.op === 'submitRun') {
           const run = item.payload as RunSubmission;
           const res = await this.api.submitRun(run, run.runId);

@@ -21,6 +21,106 @@ export interface RewardedAdProvider {
   show(): Promise<AdResult>;
 }
 
+/**
+ * AdMob through Capacitor.
+ *
+ * The web build has no AdMob rewarded video — the SDK is native only — so
+ * this reports unavailable until the app runs inside a Capacitor shell with
+ * `@capacitor-community/admob` installed. That keeps one provider working
+ * across both targets instead of branching the game on platform.
+ *
+ * The reward is NOT granted here. `show()` only reports that the ad
+ * completed; the coins arrive from AdMob's server-side verification callback
+ * hitting the `admobSsv` function. A client that grants its own reward is a
+ * client that can grant itself infinite rewards.
+ */
+export class AdMobRewardedAd implements RewardedAdProvider {
+  private loaded = false;
+  private plugin: {
+    prepareRewardVideoAd(o: unknown): Promise<unknown>;
+    showRewardVideoAd(): Promise<unknown>;
+  } | null = null;
+
+  constructor(
+    private adUnitId: string,
+    /** Firebase uid, forwarded so the SSV callback can identify the player. */
+    private userId: () => string | null
+  ) {}
+
+  /** Resolves the native plugin if we are running inside Capacitor. */
+  private async load(): Promise<boolean> {
+    if (this.plugin) return true;
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor;
+    if (!cap?.isNativePlatform?.()) return false;
+    try {
+      // Indirect specifier on purpose: the plugin only exists in a Capacitor
+      // build, and a literal import would make the web build fail to compile
+      // over a dependency it is never meant to have.
+      const spec = '@capacitor-community/admob';
+      const mod = (await import(/* @vite-ignore */ spec)) as unknown as {
+        AdMob: NonNullable<AdMobRewardedAd['plugin']>;
+      };
+      this.plugin = mod.AdMob;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  isAvailable(): boolean {
+    return this.loaded;
+  }
+
+  /** Call once at startup; safe to call on web, where it does nothing. */
+  async prepare(): Promise<void> {
+    if (!(await this.load())) return;
+    try {
+      await this.plugin!.prepareRewardVideoAd({
+        adId: this.adUnitId,
+        ssv: { userId: this.userId() ?? undefined },
+      });
+      this.loaded = true;
+    } catch {
+      this.loaded = false;
+    }
+  }
+
+  async show(): Promise<AdResult> {
+    if (!(await this.load())) return 'unavailable';
+    try {
+      await this.plugin!.showRewardVideoAd();
+      this.loaded = false;
+      void this.prepare(); // load the next one
+      return 'completed';
+    } catch {
+      return 'dismissed';
+    }
+  }
+}
+
+/**
+ * Wraps a provider so it reports unavailable until consent is given.
+ *
+ * Gating at this seam rather than at each call site means a new ad placement
+ * added later cannot forget to check — the provider itself refuses.
+ */
+export class ConsentGatedAd implements RewardedAdProvider {
+  constructor(
+    private inner: RewardedAdProvider,
+    private allowed: () => boolean
+  ) {}
+
+  isAvailable(): boolean {
+    return this.allowed() && this.inner.isAvailable();
+  }
+
+  async show(): Promise<AdResult> {
+    if (!this.allowed()) return 'unavailable';
+    return this.inner.show();
+  }
+}
+
 /** Nothing to show. Used when ads are disabled or a network failed to load. */
 export class NullRewardedAd implements RewardedAdProvider {
   isAvailable(): boolean {

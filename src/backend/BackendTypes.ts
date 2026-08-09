@@ -129,7 +129,7 @@ export interface PurchaseResult {
 /** Queued mutation shape. Kept small — it is persisted between sessions. */
 export interface OutboxItem {
   id: string;
-  op: 'submitRun' | 'purchaseCosmetic' | 'equipCosmetic' | 'syncProfile';
+  op: 'submitRun' | 'purchaseCosmetic' | 'equipCosmetic' | 'syncProfile' | 'consent';
   payload: unknown;
   idempotencyKey: string;
   createdAt: number;

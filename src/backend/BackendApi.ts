@@ -76,4 +76,20 @@ export class BackendApi {
   leaderboard(board: string, limit = 25): Promise<LeaderboardPage | null> {
     return this.call<LeaderboardPage>('getLeaderboard', { board, limit }, 8000);
   }
+
+  consent(ads: boolean, analytics: boolean): Promise<{ ok: boolean } | null> {
+    return this.call<{ ok: boolean }>('updateConsent', { ads, analytics }, 6000);
+  }
+
+  claimMission(id: string): Promise<{ ok: boolean; reason: string } | null> {
+    return this.call<{ ok: boolean; reason: string }>('claimMission', { id }, 8000);
+  }
+
+  exportData(): Promise<unknown | null> {
+    return this.call<unknown>('exportPlayer', {}, 15000);
+  }
+
+  deleteAccount(): Promise<{ ok: boolean } | null> {
+    return this.call<{ ok: boolean }>('deletePlayer', {}, 20000);
+  }
 }

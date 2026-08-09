@@ -1,8 +1,10 @@
 # Backend — status and setup
 
-Implements **Phases 0–7** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
+Implements **Phases 0–11** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
 Firebase foundation, client abstraction, anonymous auth, bootstrap, cloud
-save, run validation, a server-authoritative economy and leaderboards.
+save, run validation, a server-authoritative economy, leaderboards, the
+daily challenge, consent, verified ad rewards, missions, purchases and
+account deletion.
 
 The game runs **exactly as before with no backend configured**. That is the
 designed fallback, not a degraded mode — see "Offline is the default" below.
@@ -21,6 +23,13 @@ functions/                     Cloud Functions (TypeScript, Node 22, 2nd gen)
   src/callable/leaderboard.ts  top-N plus the caller's own rank
   src/domain/leaderboards/     board ids and best-entry writes
   src/domain/dailies/          date-derived seed + one-attempt tracking
+  src/callable/consent.ts      records the consent choice with a timestamp
+  src/callable/missions.ts     claims a completed mission's reward
+  src/callable/privacy.ts      export + full account deletion
+  src/callable/push.ts         device token registry
+  src/http/admobSsv.ts         AdMob signature check + one-time reward grant
+  src/http/revenuecatWebhook.ts  entitlements from verified purchases
+  src/domain/missions/         mission definitions + world unlock rules
   src/domain/runs/validate.ts  Tier 1 plausibility + coin award
   src/domain/economy/          server-held catalogue prices
   src/domain/players/model.ts  authoritative player document
@@ -51,7 +60,11 @@ firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 | 5 — Server-authoritative economy | Done |
 | 6 — Run submission + anti-cheat | Done (Tier 1 + ticket) |
 | 7 — Leaderboards + daily | Done |
-| 8–12 | Not started |
+| 8 — Consent + verified ad rewards | Done (needs your AdMob ids) |
+| 9 — Missions, unlocks, push | Done |
+| 10 — IAP / RevenueCat | Webhook done (needs your products) |
+| 11 — Privacy, export, deletion | Done |
+| 12 — Release hardening | Checklist below |
 
 **The wallet is now server-owned when a backend is configured.** `submitRun`
 is the only thing that mints coins and `purchaseCosmetic` the only thing that
@@ -123,6 +136,14 @@ document in Firestore under `players/`. Reloading reuses the same uid.
 - Ranks and "you" highlighting correct; weekly board keys to the Monday
 - Two players get the identical daily seed; a second attempt is blocked;
   daily scores land on `daily_YYYYMMDD` and never on the endless boards
+- SSV rejects a tampered `reward_amount`, a tampered `user_id`, a signature
+  from the wrong key and an unknown key id; accepts a valid one
+- The same ad transaction pays 25 then 0 — replays are worthless
+- A mission claims once (150 coins), then `ALREADY_CLAIMED`
+- Worlds unlock from the validated best level (level 8 → CLAY, NEON, HELL)
+- The RevenueCat webhook returns `401` without the shared secret
+- Deletion removes the player, runs, subcollections and leaderboard entry,
+  and scrubs the uid from the ad ledger while keeping the transaction
 - Production build with a `demo-*` config makes **no** network requests
 - No console errors; no Firebase requests at all when unconfigured
 
@@ -243,8 +264,58 @@ override is cleared on the way back to the menu so a daily layout can never
 leak into endless play. Daily scores go only to `daily_YYYYMMDD`; mixing a
 fixed-layout run into the endless boards would compare different games.
 
-## Next
+## Ads, and what is still missing
 
-Phases 8–12 remain: consent + real AdMob (the seam is ready), missions and
-arena unlocks, RevenueCat, privacy/deletion, and production hardening. Phase
-8 is the one that starts earning.
+The whole chain is built: a consent gate, a consent-gated provider, a
+Capacitor-ready `AdMobRewardedAd`, and an SSV endpoint that verifies Google's
+signature and grants the reward exactly once.
+
+**The reward is never granted by the client.** `show()` only reports that the
+ad finished; the coins arrive when AdMob calls `admobSsv`. A client that
+grants its own reward can grant itself infinite rewards.
+
+What cannot be finished without you:
+
+- An **AdMob account**, an app, a rewarded ad unit id, and SSV pointed at the
+  deployed `admobSsv` URL.
+- **Capacitor**, since AdMob rewarded video is native-only. On web the
+  provider reports unavailable and the placeholder stands in.
+- The consent gate here is deliberately simple. EU store traffic needs
+  Google's **UMP SDK**, which produces the TCF strings ad networks require —
+  this gate is honest about the choice but does not emit those.
+
+## Purchases
+
+`revenuecatWebhook` verifies the shared secret from Secret Manager, grants
+entitlements and coin packs once per event id, and revokes on cancellation,
+expiry or refund. Consumable coins are not clawed back on refund — that
+creates negative balances; store policy handles abuse instead.
+
+Needs from you: RevenueCat products matching the ids in the webhook, and
+`firebase functions:secrets:set REVENUECAT_WEBHOOK_SECRET`.
+
+## Privacy
+
+`exportPlayer` returns everything held; `deletePlayer` removes the player
+document, subcollections, run history, leaderboard identity and the auth
+user, then scrubs the uid from the ad ledger — the transaction id stays so
+replay protection survives a delete-and-recreate, the person does not.
+
+Deletion is reachable in-app from the consent screen, which both stores
+require for any app that creates an account, including an automatic
+anonymous one.
+
+## Phase 12 — before you ship
+
+- [ ] Create `bbb-dev` / `bbb-staging` / `bbb-prod`, update `.firebaserc`
+- [ ] Enable Anonymous auth + Firestore in each
+- [ ] `npm run deploy:rules:dev` then `deploy:functions:dev`
+- [ ] Set a **billing budget alert** (Functions 2nd gen needs Blaze)
+- [ ] Register App Check, watch metrics, then enable enforcement
+      (`checkAppAttestation(req, true)`)
+- [ ] Publish a privacy policy URL and link it from the consent screen
+- [ ] Add Sentry for browser errors (Crashlytics is native-only)
+- [ ] Capacitor wrap, then AdMob + UMP + ATT
+- [ ] Seed `catalogue/cosmetics` if you want prices tunable without a deploy
+- [ ] Replace the five gameplay `Math.random()` calls with a seeded PRNG
+      before attempting replay validation (PRODUCTION_SPEC Appendix C)

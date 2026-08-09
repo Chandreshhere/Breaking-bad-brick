@@ -142,6 +142,9 @@ export class Game {
   onOpenShop: ((onBack: () => void) => void) | null = null;
   onOpenLeaderboard: ((onBack: () => void) => void) | null = null;
   onStartDaily: (() => void) | null = null;
+  /** Shown before anything tracking-related runs; resolves to the intro. */
+  onNeedConsent: ((done: () => void) => boolean) | null = null;
+  onOpenPrivacy: ((onBack: () => void) => void) | null = null;
   /** Today's challenge state, supplied by Experience after bootstrap. */
   dailyStatus: { played: boolean; score: number } | null = null;
   onLeaveDaily: (() => void) | null = null;
@@ -352,6 +355,9 @@ export class Game {
 
   private enterIntro(): void {
     this.setState('intro');
+    // The consent gate takes priority over the menu — it must be answered
+    // before an ad or an analytics event can fire.
+    if (this.onNeedConsent?.(() => this.enterIntro())) return;
     this.demo = true; // attract mode runs behind every menu screen
     this.screens.showIntro(
       () => {

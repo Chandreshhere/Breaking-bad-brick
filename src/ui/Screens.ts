@@ -649,6 +649,75 @@ export class Screens {
     this.show(el);
   }
 
+
+  /**
+   * Consent gate. Shown once, before anything tracking-related runs.
+   *
+   * Both choices are equally prominent and equally easy: a "decline" hidden
+   * behind small grey text is a dark pattern, and regulators treat it as no
+   * consent at all. Declining is fully playable — it costs the rewarded ad,
+   * nothing else.
+   */
+  showConsent(opts: { onAccept: () => void; onDecline: () => void; onPrivacy?: () => void }): void {
+    const el = document.createElement('div');
+    el.className = 'acb-screen';
+    el.innerHTML = `
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
+      <div class="acb-center">
+        <div class="acb-results-title" style="font-size:clamp(22px,6vw,38px)">PRIVACY</div>
+        <div style="max-width:34ch;line-height:1.75;font-size:clamp(12px,3vw,15px);
+                    color:rgba(242,237,218,0.85)">
+          We can show optional rewarded ads and collect anonymous gameplay
+          analytics to improve the game.<br><br>
+          You can play everything either way. Declining only turns off the
+          reward-ad option.
+        </div>
+        <button class="acb-pill" data-action="accept">ALLOW</button>
+        <button class="acb-pill acb-pill-ghost" data-action="decline">NO THANKS</button>
+        ${opts.onPrivacy ? '<button class="acb-tab" data-action="privacy">PRIVACY &amp; DATA</button>' : ''}
+      </div>`;
+    el.querySelector<HTMLButtonElement>('[data-action="accept"]')!.onclick = opts.onAccept;
+    el.querySelector<HTMLButtonElement>('[data-action="decline"]')!.onclick = opts.onDecline;
+    const pv = el.querySelector<HTMLButtonElement>('[data-action="privacy"]');
+    if (pv && opts.onPrivacy) pv.onclick = opts.onPrivacy;
+    this.show(el);
+  }
+
+  /**
+   * Data and privacy. Account deletion has to be reachable in-app — both
+   * stores require it for any app that creates an account, and an
+   * automatically-created anonymous one counts.
+   */
+  showPrivacy(opts: {
+    busy: string | null;
+    onExport: () => void;
+    onDelete: () => void;
+    onBack: () => void;
+  }): void {
+    const el = document.createElement('div');
+    el.className = 'acb-screen';
+    el.innerHTML = `
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
+      <div class="acb-center">
+        <div class="acb-results-title" style="font-size:clamp(20px,5.5vw,34px)">PRIVACY &amp; DATA</div>
+        ${opts.busy ? `<div class="acb-lb-state">${opts.busy}</div>` : ''}
+        <div style="max-width:34ch;line-height:1.7;font-size:clamp(11px,2.8vw,14px);
+                    color:rgba(242,237,218,0.75)">
+          We store your scores, coins and settings against an anonymous id.
+          No name, email or contacts.
+        </div>
+        <button class="acb-pill acb-pill-ghost" data-action="export">DOWNLOAD MY DATA</button>
+        <button class="acb-pill" style="background:#c0392b;color:#fff" data-action="delete">
+          DELETE MY ACCOUNT
+        </button>
+        <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
+      </div>`;
+    el.querySelector<HTMLButtonElement>('[data-action="export"]')!.onclick = opts.onExport;
+    el.querySelector<HTMLButtonElement>('[data-action="delete"]')!.onclick = opts.onDelete;
+    el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
+    this.show(el);
+  }
+
   showPause(onResume: () => void, onSettings?: () => void, onMainMenu?: () => void): void {
     const el = document.createElement('div');
     el.className = 'acb-screen acb-pause';

@@ -13,3 +13,11 @@ export { syncProfile } from './callable/syncProfile';
 export { startRun, submitRun } from './callable/runs';
 export { purchaseCosmetic, equipCosmetic } from './callable/shop';
 export { getLeaderboard } from './callable/leaderboard';
+export { updateConsent } from './callable/consent';
+export { claimMission } from './callable/missions';
+export { registerPushToken } from './callable/push';
+export { exportPlayer, deletePlayer } from './callable/privacy';
+
+// External services call in over plain HTTP; everything else is a callable.
+export { admobSsv } from './http/admobSsv';
+export { revenuecatWebhook } from './http/revenuecatWebhook';

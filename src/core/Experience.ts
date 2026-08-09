@@ -20,13 +20,14 @@ import { Game } from '../game/Game';
 import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
+import { ConsentStore } from '../backend/Consent';
 import { RemoteProgress } from '../backend/RemoteProgress';
 import type {
   LeaderboardPage,
   SubmitRunResult,
   SyncProfileResult,
 } from '../backend/BackendTypes';
-import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
+import { ConsentGatedAd, PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
 import { ProgressStore } from '../game/Progress';
@@ -77,6 +78,7 @@ export class Experience {
   readonly powerups: PowerupManager;
   readonly boss = new BossCharacter();
   readonly progress = new ProgressStore();
+  readonly consent = new ConsentStore();
   /**
    * Cloud mirror of the profile. Disabled and inert without a Firebase
    * config, so the game is identical offline — see src/backend/.
@@ -86,7 +88,12 @@ export class Experience {
    * Swap this for a real network (AdMob via Capacitor on the stores, an
    * HTML5 ad SDK on web) and nothing else changes. See src/game/Ads.ts.
    */
-  ads: RewardedAdProvider = new PlaceholderRewardedAd();
+  ads: RewardedAdProvider = new ConsentGatedAd(
+    // Swap the inner provider for AdMobRewardedAd in a Capacitor build; the
+    // gate and everything downstream stay the same.
+    new PlaceholderRewardedAd(),
+    () => this.consent.adsAllowed
+  );
   readonly audio = new AudioFx();
   readonly music = new MusicEngine(this.audio);
   readonly feel: GameFeelManager;
@@ -277,6 +284,29 @@ export class Experience {
     // existed — repaint it so it carries the profile readouts and SHOP.
     this.loop.refreshIntro();
 
+    // The consent gate only exists when there is a backend to consent to.
+    // With none configured nothing is collected, so nothing is asked.
+    this.loop.onNeedConsent = (done): boolean => {
+      if (!this.remote.enabled || !this.consent.needsPrompt) return false;
+      this.screens.showConsent({
+        onAccept: (): void => {
+          this.audio.click();
+          this.consent.set(true, true);
+          void this.remote.setConsent(true, true);
+          done();
+        },
+        onDecline: (): void => {
+          this.audio.click();
+          this.consent.set(false, false);
+          void this.remote.setConsent(false, false);
+          done();
+        },
+        onPrivacy: (): void => this.openPrivacy(done),
+      });
+      return true;
+    };
+    this.loop.onOpenPrivacy = (onBack): void => this.openPrivacy(onBack);
+
     // Fire and forget: identity + launch payload. Deliberately not awaited —
     // the game must reach the intro screen whether or not this resolves.
     void this.startBackend();
@@ -442,6 +472,58 @@ export class Experience {
       best: this.progress.profile.bestScore,
       balls: this.progress.profile.ownedBalls.length,
     });
+  }
+
+  /** Data export and account deletion — required in-app by both stores. */
+  openPrivacy(onBack: () => void): void {
+    const paint = (busy: string | null): void => {
+      this.screens.showPrivacy({
+        busy,
+        onExport: (): void => {
+          paint('PREPARING YOUR DATA…');
+          void this.remote.exportData().then((data) => {
+            if (!data) {
+              paint('OFFLINE — TRY AGAIN LATER');
+              return;
+            }
+            // Hand it over as a file rather than a wall of text.
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'breaking-bad-brick-data.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            paint('DOWNLOADED');
+          });
+        },
+        onDelete: (): void => {
+          // Irreversible, so it asks once in plain words.
+          if (!window.confirm('Delete your account and all progress? This cannot be undone.')) {
+            return;
+          }
+          paint('DELETING…');
+          void this.remote.deleteAccount().then((res) => {
+            if (!res?.ok) {
+              paint('OFFLINE — TRY AGAIN LATER');
+              return;
+            }
+            // Local state must go too, or the next launch would re-upload it.
+            try {
+              localStorage.removeItem('acb-profile');
+              localStorage.removeItem('acb-consent');
+            } catch {
+              /* private mode */
+            }
+            location.reload();
+          });
+        },
+        onBack: (): void => {
+          this.audio.click();
+          onBack();
+        },
+      });
+    };
+    paint(null);
   }
 
   /** Re-applies the equipped ball/paddle skins to the live objects. */
