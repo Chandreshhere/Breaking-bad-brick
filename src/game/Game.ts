@@ -143,6 +143,8 @@ export class Game {
   private runFiled = false;
   /** Skips the full 3-2-1 on a retry; the gap between dying and playing again matters. */
   private fastCountdown = false;
+  /** Countdown is a pause-resume, not a serve — see `resume`. */
+  private resumeAfterCountdown = false;
   onBossStrike: (() => void) | null = null;
   onBossHit: (() => void) | null = null;
   onBossDefeated: (() => void) | null = null;
@@ -417,6 +419,7 @@ export class Game {
     // A boss telegraph must never survive into a fresh serve un-telegraphed.
     this.bossAttackMode = 'idle';
     this.bossAttackTimer = Math.max(4, this.bossAttackTimer);
+    this.resumeAfterCountdown = false;
     this.setState('countdown');
     if (this.silent) {
       this.countdownValue = -1; // waits for a click instead of ticking
@@ -484,7 +487,20 @@ export class Game {
     if (this.state !== 'paused') return;
     this.audio.click();
     this.screens.hideAll();
-    this.setState('playing');
+    if (this.silent) {
+      // The screenshot harness never ticks the countdown, so a delay here
+      // would hang it.
+      this.setState('playing');
+      return;
+    }
+    // Never drop straight back into a live ball — the player has been
+    // looking at a menu and needs a beat to find the paddle again. This is
+    // a resume, not a serve: the rally continues exactly where it stopped.
+    this.resumeAfterCountdown = true;
+    this.setState('countdown');
+    this.countdownValue = 3;
+    this.countdownTimer = 0;
+    this.screens.setCountdown(3);
   }
 
   private serve(): void {
@@ -909,7 +925,15 @@ export class Game {
         this.countdownTimer -= COUNTDOWN_TICK;
         this.countdownValue -= 1;
         if (this.countdownValue <= 0) {
-          this.serve();
+          if (this.resumeAfterCountdown) {
+            // Resuming a paused rally: the ball is already in flight, so
+            // hand control straight back instead of serving a new one.
+            this.resumeAfterCountdown = false;
+            this.screens.setCountdown(null);
+            this.setState('playing');
+          } else {
+            this.serve();
+          }
         } else {
           this.screens.setCountdown(this.countdownValue);
         }
