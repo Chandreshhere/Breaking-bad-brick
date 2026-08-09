@@ -44,6 +44,14 @@ export interface RemotePlayer {
   flags: { consentAds: boolean; consentAnalytics: boolean; legacyMigrated: boolean };
 }
 
+export interface DailyStatus {
+  date: string;
+  seed: number;
+  closesAt: number;
+  played: boolean;
+  score: number;
+}
+
 export interface AppStatus {
   minVersion: string;
   maintenance: boolean;
@@ -53,7 +61,7 @@ export interface AppStatus {
 export interface BootstrapResult {
   player: RemotePlayer;
   config: RemoteConfigValues;
-  daily: unknown | null;
+  daily: DailyStatus | null;
   missions: unknown[];
   catalogue: unknown | null;
   app: AppStatus;
@@ -70,6 +78,7 @@ export interface RunTicket {
   runId: string;
   mode: string;
   seed: number;
+  dailyDate: string | null;
   expiresAt: number;
   ticket: string;
 }

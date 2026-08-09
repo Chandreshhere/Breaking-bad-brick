@@ -178,6 +178,25 @@ const CSS = /* css */ `
   .acb-stats { min-width: min(320px, 86vw); }
 }
 
+/* Portrait intro: the CTA is a bottom-anchored column now that PLAY shares
+   the screen with ARENA, SHOP, DAILY and RANKS. The landscape layout floats
+   it bottom-right, which stacked the buttons up over the title. */
+@media (max-aspect-ratio: 4/5) {
+  .acb-title-block { left: 7%; right: 7%; top: 13%; }
+  .acb-title-serif { font-size: clamp(26px, 8vw, 44px); }
+  .acb-title-main { font-size: clamp(32px, 10.5vw, 58px); }
+  .acb-divider { display: none; }
+  .acb-intro-cta { left: 7%; right: 7%; bottom: calc(5vh + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  .acb-intro-cta .acb-pill { justify-content: center; padding: 11px 16px;
+    font-size: clamp(11px, 3.1vw, 15px); letter-spacing: 0.12em; }
+  /* The wordmark is long enough now that the coin readout ran into it. */
+  .acb-wordmark { font-size: 12px; letter-spacing: 0.3em; left: 7%; top: 26px; }
+  .acb-coins { top: 22px; right: 7%; }
+  .acb-best { bottom: auto; top: 7.5%; left: 7%; }
+  .acb-version { display: none; }
+}
+
 `;
 
 /** Menu arena catalogue — key null is the automatic 3-level cycle. */
@@ -267,6 +286,7 @@ export class Screens {
       coins?: number;
       onShop?: () => void;
       onLeaderboard?: () => void;
+      daily?: { played: boolean; score: number; onPlay: () => void };
     } = {}
   ): void {
     const el = document.createElement('div');
@@ -293,6 +313,13 @@ export class Screens {
         <button class="acb-pill" data-action="play">${BALL_SVG}PLAY</button>
         ${arena ? `<button class="acb-pill acb-pill-ghost" data-action="arena">ARENA: ${arena.label}</button>` : ''}
         ${extras.onShop ? '<button class="acb-pill acb-pill-ghost" data-action="shop">SHOP</button>' : ''}
+        ${
+          extras.daily
+            ? `<button class="acb-pill acb-pill-ghost" data-action="daily">${
+                extras.daily.played ? `DAILY DONE — ${extras.daily.score}` : 'DAILY CHALLENGE'
+              }</button>`
+            : ''
+        }
         ${extras.onLeaderboard ? '<button class="acb-pill acb-pill-ghost" data-action="leaderboard">RANKS</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="play"]')!.onclick = onPlay;
@@ -305,6 +332,8 @@ export class Screens {
     if (shopBtn && extras.onShop) shopBtn.onclick = extras.onShop;
     const lbBtn = el.querySelector<HTMLButtonElement>('[data-action="leaderboard"]');
     if (lbBtn && extras.onLeaderboard) lbBtn.onclick = extras.onLeaderboard;
+    const dailyBtn = el.querySelector<HTMLButtonElement>('[data-action="daily"]');
+    if (dailyBtn && extras.daily) dailyBtn.onclick = extras.daily.onPlay;
     this.show(el);
   }
 
@@ -564,12 +593,12 @@ export class Screens {
    * motivating, and a top-25 list alone cannot answer it.
    */
   showLeaderboard(opts: {
-    tab: 'global_alltime' | 'weekly';
+    tab: 'global_alltime' | 'weekly' | 'daily';
     state: 'loading' | 'ready' | 'offline';
     rows: Array<{ rank: number; displayName: string; score: number; levelReached: number; isMe: boolean }>;
     me: { rank: number; score: number } | null;
     total: number;
-    onTab: (tab: 'global_alltime' | 'weekly') => void;
+    onTab: (tab: 'global_alltime' | 'weekly' | 'daily') => void;
     onBack: () => void;
   }): void {
     const el = document.createElement('div');
@@ -608,12 +637,13 @@ export class Screens {
         <div class="acb-shop-tabs">
           <button class="acb-tab${opts.tab === 'global_alltime' ? ' acb-tab-on' : ''}" data-tab="global_alltime">ALL TIME</button>
           <button class="acb-tab${opts.tab === 'weekly' ? ' acb-tab-on' : ''}" data-tab="weekly">THIS WEEK</button>
+          <button class="acb-tab${opts.tab === 'daily' ? ' acb-tab-on' : ''}" data-tab="daily">TODAY</button>
         </div>
         ${body}
         <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
       </div>`;
     el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
-      b.onclick = (): void => opts.onTab(b.dataset['tab'] as 'global_alltime' | 'weekly');
+      b.onclick = (): void => opts.onTab(b.dataset['tab'] as 'global_alltime' | 'weekly' | 'daily');
     });
     el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
     this.show(el);

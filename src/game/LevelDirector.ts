@@ -36,8 +36,22 @@ const GRID_COLS = 10;
 export class LevelDirector {
   level = 1;
   wave = 1;
+  /**
+   * Overrides the config seed for a daily challenge, so every player in the
+   * world gets the identical sequence of levels. Null means the normal
+   * endless seed.
+   */
+  private seedOverride: number | null = null;
 
   constructor(private cfg: VisualConfig) {}
+
+  setSeedOverride(seed: number | null): void {
+    this.seedOverride = seed;
+  }
+
+  private get baseSeed(): number {
+    return this.seedOverride ?? this.cfg.game.levels.baseSeed;
+  }
 
   setLevel(n: number): void {
     this.level = Math.max(1, n);
@@ -118,9 +132,7 @@ export class LevelDirector {
   /** Deterministic brick layout for the current level + wave. */
   getBrickSpecs(): BrickSpec[] {
     if (this.isBossLevel()) return this.bossSpecs();
-    const rng = mulberry32(
-      this.cfg.game.levels.baseSeed + this.level * 1009 + this.wave * 97
-    );
+    const rng = mulberry32(this.baseSeed + this.level * 1009 + this.wave * 97);
     const rows = this.wave === 1 ? 6 : 4; // reinforcement waves are lighter
     const matrix = buildFormation(this.formationName(), rows, GRID_COLS, rng);
 

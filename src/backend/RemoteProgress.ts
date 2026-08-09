@@ -9,6 +9,7 @@ import type {
   PurchaseResult,
   RemoteProgressApi,
   RunSubmission,
+  RunTicket,
   SubmitRunResult,
   SyncProfileResult,
 } from './BackendTypes';
@@ -90,12 +91,17 @@ export class RemoteProgress implements RemoteProgressApi {
    * to let someone play in a tunnel is a worse outcome than an unranked
    * score.
    */
-  async startRun(mode = 'ENDLESS'): Promise<string | null> {
+  async startRun(mode = 'ENDLESS'): Promise<RunTicket | null> {
     this.ticket = null;
     if (!this.online) return null;
     const t = await this.api.startRun(mode);
     this.ticket = t?.runId ?? null;
-    return this.ticket;
+    return t;
+  }
+
+  /** Today's challenge, as of the last bootstrap. */
+  get daily(): BootstrapResult['daily'] {
+    return this.booted?.daily ?? null;
   }
 
   /** Submits a finished run, queueing it when offline. */

@@ -11,10 +11,12 @@ import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
 import { validateRun, coinsForRun, type RunClaim } from '../domain/runs/validate';
 import {
   ALLTIME_BOARD,
+  dailyBoardId,
   readBestScore,
   weeklyBoardId,
   writeBestEntry,
 } from '../domain/leaderboards/boards';
+import { attemptRef, dailyForDate, readAttempt } from '../domain/dailies/daily';
 
 const MODES = ['ENDLESS', 'DAILY'] as const;
 type Mode = (typeof MODES)[number];
@@ -44,8 +46,23 @@ export const startRun = onCall(
 
     const runId = randomUUID();
     const secret = randomBytes(24).toString('hex');
-    const seed = Math.floor(Math.random() * 2_000_000_000);
     const now = Date.now();
+
+    // Endless gets a throwaway seed; the daily gets today's shared one, so
+    // every player is ranked on the same layout.
+    let seed = Math.floor(Math.random() * 2_000_000_000);
+    let dailyDate: string | null = null;
+    if (mode === 'DAILY') {
+      const spec = dailyForDate(new Date());
+      const attempt = await readAttempt(uid, spec.date);
+      if (attempt?.submitted) throw fail.denied('Today\'s challenge is already played.');
+      seed = spec.seed;
+      dailyDate = spec.date;
+      await attemptRef(uid, spec.date).set(
+        { date: spec.date, startedAt: now, submitted: false, score: 0 },
+        { merge: true }
+      );
+    }
 
     await col.runTickets().doc(runId).set({
       runId,
@@ -53,6 +70,7 @@ export const startRun = onCall(
       mode,
       seed,
       secret,
+      dailyDate,
       issuedAt: now,
       expiresAt: now + TICKET_TTL_MS,
       submitted: false,
@@ -62,6 +80,7 @@ export const startRun = onCall(
       runId,
       mode,
       seed,
+      dailyDate,
       issuedAt: now,
       expiresAt: now + TICKET_TTL_MS,
       ticket: signTicket(runId, seed, secret),
@@ -100,26 +119,34 @@ export const submitRun = onCall(
       const playerRef = col.players().doc(uid);
 
       const weeklyBoard = weeklyBoardId(new Date());
+      const todayBoard = dailyBoardId(new Date());
 
       const result = await col.players().firestore.runTransaction(async (tx) => {
         // ── every read first ────────────────────────────────────────────
-        const [ticketSnap, playerSnap, prevAlltime, prevWeekly] = await Promise.all([
+        const [ticketSnap, playerSnap, prevAlltime, prevWeekly, prevDaily] = await Promise.all([
           tx.get(ticketRef),
           tx.get(playerRef),
           readBestScore(tx, ALLTIME_BOARD, uid),
           readBestScore(tx, weeklyBoard, uid),
+          readBestScore(tx, todayBoard, uid),
         ]);
 
         // A missing ticket means the run started offline. That is allowed —
         // refusing it would make a tunnel cost the player their run — but the
         // result is marked UNVERIFIED and stays off competitive boards.
         let verification: 'VERIFIED' | 'UNVERIFIED' = 'UNVERIFIED';
+        let runMode: Mode = 'ENDLESS';
+        let dailyDate: string | null = null;
         if (ticketSnap.exists) {
           const t = ticketSnap.data() as {
             uid: string;
             expiresAt: number;
             submitted: boolean;
+            mode?: Mode;
+            dailyDate?: string | null;
           };
+          runMode = t.mode ?? 'ENDLESS';
+          dailyDate = t.dailyDate ?? null;
           if (t.uid !== uid) throw fail.denied('Ticket belongs to another player.');
           if (t.submitted) throw fail.badRequest('Run already submitted.');
           if (Date.now() > t.expiresAt) throw fail.badRequest('Run ticket expired.');
@@ -161,9 +188,21 @@ export const submitRun = onCall(
             levelReached: claim.levelReached,
             runId,
           };
-          const a = writeBestEntry(tx, ALLTIME_BOARD, entry, prevAlltime);
-          const w = writeBestEntry(tx, weeklyBoard, entry, prevWeekly);
-          ranked = a || w;
+          if (runMode === 'DAILY' && dailyDate) {
+            // A daily score belongs only to its own board — mixing one run
+            // on a fixed layout into the endless boards would compare
+            // different games.
+            ranked = writeBestEntry(tx, `daily_${dailyDate}`, entry, prevDaily);
+            tx.set(
+              attemptRef(uid, dailyDate),
+              { date: dailyDate, submitted: true, score: claim.score },
+              { merge: true }
+            );
+          } else {
+            const a = writeBestEntry(tx, ALLTIME_BOARD, entry, prevAlltime);
+            const w = writeBestEntry(tx, weeklyBoard, entry, prevWeekly);
+            ranked = a || w;
+          }
         }
 
         tx.set(col.runs().doc(runId), {

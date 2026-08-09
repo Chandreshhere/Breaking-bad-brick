@@ -141,8 +141,14 @@ export class Game {
   getProfileSummary: (() => { best: number; coins: number }) | null = null;
   onOpenShop: ((onBack: () => void) => void) | null = null;
   onOpenLeaderboard: ((onBack: () => void) => void) | null = null;
+  onStartDaily: (() => void) | null = null;
+  /** Today's challenge state, supplied by Experience after bootstrap. */
+  dailyStatus: { played: boolean; score: number } | null = null;
+  onLeaveDaily: (() => void) | null = null;
   /** Server run lifecycle. Both are fire-and-forget; neither may block play. */
-  onRunStart: (() => void) | null = null;
+  onRunStart: ((mode: 'ENDLESS' | 'DAILY') => void) | null = null;
+  /** Set while a daily challenge is being played — one run, fixed seed. */
+  private runMode: 'ENDLESS' | 'DAILY' = 'ENDLESS';
   onRunSubmit:
     | ((run: {
         score: number;
@@ -372,6 +378,16 @@ export class Game {
               this.onOpenLeaderboard?.(() => this.enterIntro());
             }
           : undefined,
+        daily: this.dailyStatus
+          ? {
+              ...this.dailyStatus,
+              onPlay: (): void => {
+                this.audio.unlock();
+                this.audio.click();
+                this.onStartDaily?.();
+              },
+            }
+          : undefined,
       }
     );
   }
@@ -494,6 +510,7 @@ export class Game {
   /** Abandon the run and return to the intro menu, fully reset. */
   private returnToMenu(): void {
     this.audio.click();
+    this.onLeaveDaily?.();
     // Abandoning mid-run still banks it — otherwise a player who clears five
     // levels and then quits to the menu loses every coin and their best.
     this.fileRun();
@@ -707,7 +724,38 @@ export class Game {
     this.runBricks = 0;
     this.runSeconds = 0;
     this.runContinues = 0;
-    this.onRunStart?.();
+    this.onRunStart?.(this.runMode);
+  }
+
+  /**
+   * Starts today's challenge: one attempt, on a layout everyone shares.
+   * `applySeed` swaps the level generator's seed before anything is built.
+   */
+  startDaily(applySeed: () => void): void {
+    this.runMode = 'DAILY';
+    this.levels.setLevel(1);
+    this.lives = this.cfg.game.rules.lives;
+    this.score = 0;
+    this.runFiled = false;
+    this.continueUsed = true; // no rewarded continue in a one-shot run
+    applySeed();
+    this.onLevelChanged?.(this.levels.level);
+    this.rebuildObjects();
+    this.handleRebuild();
+    this.hud.setLevel(this.levels.level);
+    this.beginRun();
+    this.startCountdown();
+  }
+
+  /** Back to endless — the daily seed must not leak into normal play. */
+  endDaily(clearSeed: () => void): void {
+    if (this.runMode !== 'DAILY') return;
+    this.runMode = 'ENDLESS';
+    clearSeed();
+  }
+
+  get isDailyRun(): boolean {
+    return this.runMode === 'DAILY';
   }
 
   /**

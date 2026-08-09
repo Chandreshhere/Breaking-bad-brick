@@ -3,6 +3,7 @@ import { col } from '../utils/firestore';
 import { requireUid, checkAppAttestation } from '../security/auth';
 import { auditLog } from '../utils/logging';
 import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
+import { dailyForDate, readAttempt } from '../domain/dailies/daily';
 
 /**
  * The single call the client makes on launch.
@@ -22,7 +23,7 @@ const DEFAULT_CONFIG = {
   adsEnabled: true,
   interstitialEveryNRuns: 3,
   continuesPerRun: 1,
-  dailyEnabled: false,
+  dailyEnabled: true,
   leaderboardEnabled: false,
   maxRunsPerHour: 60,
 };
@@ -33,10 +34,19 @@ const APP_STATUS = {
   message: null as string | null,
 };
 
+export interface DailyStatus {
+  date: string;
+  seed: number;
+  closesAt: number;
+  /** True once today's single attempt has been submitted. */
+  played: boolean;
+  score: number;
+}
+
 export interface BootstrapResult {
   player: PlayerDoc;
   config: typeof DEFAULT_CONFIG;
-  daily: unknown | null;
+  daily: DailyStatus | null;
   missions: unknown[];
   catalogue: unknown | null;
   app: typeof APP_STATUS;
@@ -72,9 +82,9 @@ export const bootstrap = onCall(
     const country = (req.rawRequest.headers['x-appengine-country'] as string) ?? null;
     const player = await loadOrCreatePlayer(uid, country);
 
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const [dailySnap, missionsSnap, catalogueSnap] = await Promise.all([
-      col.dailies().doc(today).get(),
+    const spec = dailyForDate(new Date());
+    const [attempt, missionsSnap, catalogueSnap] = await Promise.all([
+      readAttempt(uid, spec.date),
       col.missions().where('activeTo', '>', Date.now()).limit(3).get(),
       col.catalogue().doc('cosmetics').get(),
     ]);
@@ -82,7 +92,13 @@ export const bootstrap = onCall(
     return {
       player,
       config: DEFAULT_CONFIG,
-      daily: dailySnap.exists ? dailySnap.data() : null,
+      daily: {
+        date: spec.date,
+        seed: spec.seed,
+        closesAt: spec.closesAt,
+        played: attempt?.submitted ?? false,
+        score: attempt?.score ?? 0,
+      },
       missions: missionsSnap.docs.map((d) => d.data()),
       catalogue: catalogueSnap.exists ? catalogueSnap.data() : null,
       app: APP_STATUS,

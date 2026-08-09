@@ -260,7 +260,13 @@ export class Experience {
 
     // Run lifecycle. Both are deliberately not awaited: a slow ticket must
     // never delay a serve, and a slow submit must never delay the results.
-    this.loop.onRunStart = (): void => void this.remote.startRun('ENDLESS');
+    this.loop.onRunStart = (mode): void => {
+      void this.remote.startRun(mode).then((ticket) => {
+        // The server owns the daily seed. If it differs from what bootstrap
+        // reported — a date rollover mid-session — adopt the server's.
+        if (mode === 'DAILY' && ticket) this.levels.setSeedOverride(ticket.seed);
+      });
+    };
     this.loop.onRunSubmit = (run): void => {
       void this.remote.submitRun(run).then((res) => {
         if (res) this.adoptRunResult(res);
@@ -388,6 +394,18 @@ export class Experience {
       this.progress.serverAuthoritative = true;
       this.loop.onOpenLeaderboard = (onBack): void =>
         this.openLeaderboard('global_alltime', onBack);
+
+      // Today's challenge: same seed for everyone, one attempt.
+      const daily = this.remote.daily;
+      if (boot.config.dailyEnabled && daily) {
+        this.loop.dailyStatus = { played: daily.played, score: daily.score };
+        this.loop.onStartDaily = (): void => {
+          this.loop.startDaily(() => this.levels.setSeedOverride(daily.seed));
+        };
+        this.loop.onLeaveDaily = (): void => {
+          this.loop.endDaily(() => this.levels.setSeedOverride(null));
+        };
+      }
       if (synced) this.adoptRemoteProfile(synced);
       this.loop.refreshIntro();
     } catch (err) {
@@ -402,8 +420,14 @@ export class Experience {
     console.info('[backend] run accepted', {
       coins: res.coinsAwarded,
       verification: res.verification,
+      ranked: res.ranked,
       wallet: res.player.wallet.coins,
     });
+    // A finished daily is spent: reflect that on the intro immediately
+    // rather than waiting for the next launch.
+    if (this.loop.isDailyRun && this.loop.dailyStatus) {
+      this.loop.dailyStatus = { played: true, score: res.player.stats.bestScore };
+    }
     this.loop.refreshIntro();
   }
 
@@ -479,7 +503,7 @@ export class Experience {
    * and an unreachable one says so rather than showing an empty board, which
    * would read as "nobody has ever played".
    */
-  openLeaderboard(tab: 'global_alltime' | 'weekly', onBack: () => void): void {
+  openLeaderboard(tab: 'global_alltime' | 'weekly' | 'daily', onBack: () => void): void {
     const paint = (
       state: 'loading' | 'ready' | 'offline',
       page: LeaderboardPage | null
@@ -499,7 +523,10 @@ export class Experience {
     };
 
     paint('loading', null);
-    void this.remote.leaderboard(tab, 25).then((page) => {
+    // 'daily' resolves to today's board id server-side, so the client never
+    // has to know how a date is keyed.
+    const board = tab === 'daily' ? `daily_${this.remote.daily?.date ?? ''}` : tab;
+    void this.remote.leaderboard(board, 25).then((page) => {
       paint(page ? 'ready' : 'offline', page);
     });
   }

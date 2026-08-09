@@ -20,6 +20,7 @@ functions/                     Cloud Functions (TypeScript, Node 22, 2nd gen)
   src/callable/shop.ts         purchaseCosmetic / equipCosmetic
   src/callable/leaderboard.ts  top-N plus the caller's own rank
   src/domain/leaderboards/     board ids and best-entry writes
+  src/domain/dailies/          date-derived seed + one-attempt tracking
   src/domain/runs/validate.ts  Tier 1 plausibility + coin award
   src/domain/economy/          server-held catalogue prices
   src/domain/players/model.ts  authoritative player document
@@ -49,7 +50,7 @@ firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 | 4 — Cloud save + migration | Done |
 | 5 — Server-authoritative economy | Done |
 | 6 — Run submission + anti-cheat | Done (Tier 1 + ticket) |
-| 7 — Leaderboards | Done (daily challenge still to do) |
+| 7 — Leaderboards + daily | Done |
 | 8–12 | Not started |
 
 **The wallet is now server-owned when a backend is configured.** `submitRun`
@@ -120,6 +121,8 @@ document in Firestore under `players/`. Reloading reuses the same uid.
 - One entry per player, their best: improving 5000 → 20000 moved them to #1
   without growing the board
 - Ranks and "you" highlighting correct; weekly board keys to the Monday
+- Two players get the identical daily seed; a second attempt is blocked;
+  daily scores land on `daily_YYYYMMDD` and never on the endless boards
 - Production build with a `demo-*` config makes **no** network requests
 - No console errors; no Firebase requests at all when unconfigured
 
@@ -224,10 +227,24 @@ every row above them, so it costs the same at rank 10 and rank 400,000 —
 "where am I" is the question that makes a board motivating, and a top-25 list
 alone cannot answer it.
 
-## Next: daily challenge
+## Daily challenge
 
-The remaining half of Phase 7, and the strongest retention feature left. It
-needs a gameplay change rather than just a backend one: `LevelDirector` must
-accept a server-supplied seed so everyone plays the identical run, plus
-one-attempt-per-day enforcement and a `daily_YYYYMMDD` board (the board id
-helper already exists).
+One run, one seed, everyone on the identical layout — a score only means
+something when the other scores came from the same game.
+
+The seed is **derived from the UTC date**, not written by a scheduled job. A
+cron that must run before anyone can play is a single point of failure across
+timezones; deriving it means the challenge exists the moment the date rolls
+over, everywhere, with nothing to babysit. UTC specifically, so nobody gets a
+second attempt by changing timezone.
+
+`LevelDirector.setSeedOverride` swaps the generator's base seed, and the
+override is cleared on the way back to the menu so a daily layout can never
+leak into endless play. Daily scores go only to `daily_YYYYMMDD`; mixing a
+fixed-layout run into the endless boards would compare different games.
+
+## Next
+
+Phases 8–12 remain: consent + real AdMob (the seam is ready), missions and
+arena unlocks, RevenueCat, privacy/deletion, and production hardening. Phase
+8 is the one that starts earning.
