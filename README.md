@@ -56,7 +56,7 @@ lightning, sound effects and all six soundtracks are all generated at runtime.
 | 💊 **6 power-ups** | 22% drop rate — Racket XL · Multiball · Heavy Ball · Defensive Wall · Smash · Power Shot |
 | 🔥 **Combo ladder** | `5→HOT ×2` · `12→ON FIRE ×3` · `25→BLAZING ×4` · `40→OVERDRIVE ×5`. Drives VFX and music, never ball speed. |
 | 🌍 **6 worlds** | Rotates every 3 levels — each with its own soundtrack. Or lock one from the ARENA picker. |
-| 👑 **Boss levels** | Every 4th level: 24 HP core, guard ring, telegraphed laser. |
+| 👑 **Boss levels** | Every 4th level: a giant rival player — a different one per world — who stalks the ball, winds up and smashes. Metal soundtrack. |
 | ♾ **Endless levels** | Seeded and deterministic from 11 formation templates. |
 
 <div align="center">

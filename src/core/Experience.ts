@@ -20,6 +20,7 @@ import { Game } from '../game/Game';
 import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
+import { BossCharacter } from '../game/BossCharacter';
 import { PowerupManager } from '../game/Powerups';
 import { Hud } from '../ui/Hud';
 import { Screens } from '../ui/Screens';
@@ -65,6 +66,7 @@ export class Experience {
   readonly screens: Screens;
   readonly vfx: Vfx;
   readonly powerups: PowerupManager;
+  readonly boss = new BossCharacter();
   readonly audio = new AudioFx();
   readonly music = new MusicEngine(this.audio);
   readonly feel: GameFeelManager;
@@ -73,6 +75,7 @@ export class Experience {
   readonly lightning: LightningDirector;
   readonly wetSurface = new WetSurfaceController();
   readonly loop: Game;
+  private lastBossState: ReturnType<Game['bossVisualState']> = null;
   private weatherBase = 0;
   private smoothedDarkening = 0;
   /** The one debug GUI instance — shared by ?debug=1 and Settings→Developer. */
@@ -149,6 +152,7 @@ export class Experience {
     this.scene.add(this.vfx.group);
     this.powerups = new PowerupManager(this.cfg);
     this.scene.add(this.powerups.group);
+    this.scene.add(this.boss.group);
     this.feel = new GameFeelManager(
       this.cfg,
       this.rig,
@@ -206,7 +210,12 @@ export class Experience {
       // Each world has its own track; the engine swaps it on the next bar.
       // Boss levels override the arena entirely with the metal track.
       this.music.setBiome(biome);
-      this.music.setBossMode(level % 4 === 0);
+      const isBoss = level % 4 === 0;
+      this.music.setBossMode(isBoss);
+      // Every world fields its own rival.
+      this.boss.setLook(biome);
+      this.boss.setVisible(isBoss);
+      if (!isBoss) this.lastBossState = null;
     };
     this.loop.onLevelChanged = applyLevelEnvironment;
 
@@ -217,6 +226,9 @@ export class Experience {
       applyLevelEnvironment(this.levels.level);
     };
     this.loop.onOverdrive = (): void => this.weather.forceStrike();
+    this.loop.onBossStrike = (): void => this.boss.strike();
+    this.loop.onBossHit = (): void => this.boss.recoil();
+    this.loop.onBossDefeated = (): void => this.boss.defeat();
 
     // Phase 34: the world itself celebrates a level clear — each world in
     // its own voice, always on the same beat of the sequence.
@@ -478,6 +490,22 @@ export class Experience {
     this.adaptive?.frame(rawDt * 1000);
     this.loop.update(dt);
     this.vfx.update(dt);
+    // The rival performs whatever the boss brick is doing. Read-only: it
+    // never feeds back into gameplay.
+    const bossState = this.loop.bossVisualState();
+    // The brick vanishes the instant it dies, so the last live state is kept
+    // and reused — otherwise the collapse animation would have nowhere to
+    // play and the rival would pop out of existence mid-defeat.
+    if (bossState) this.lastBossState = bossState;
+    if (this.lastBossState) {
+      const ball = this.game.ball;
+      this.boss.update(dt, {
+        ...this.lastBossState,
+        ballX: ball?.position.x ?? 0,
+        ballZ: ball?.position.z ?? 0,
+        windingUp: bossState ? this.lastBossState.windingUp : false,
+      });
+    }
     this.music.setIntensity(this.loop.musicIntensity);
     // Phase 33: the level's spectacle target scales the biome's weather,
     // and the in-level tension wave breathes on top of it.

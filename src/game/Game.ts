@@ -122,6 +122,10 @@ export class Game {
   /** Set by Experience — opens the relocated dev tools (dev builds only). */
   onOpenDevTools: (() => void) | null = null;
   private stunTimer = 0;
+  /** Fired when the rival actually swings / is hit / falls — visuals only. */
+  onBossStrike: (() => void) | null = null;
+  onBossHit: (() => void) | null = null;
+  onBossDefeated: (() => void) | null = null;
   private bossAttackMode: 'idle' | 'telegraph' = 'idle';
   private bossAttackTimer = 6;
   private bossAttackZ = 0;
@@ -208,6 +212,29 @@ export class Game {
   /** Per-level spectacle baseline for the weather system. */
   get spectacleWeather(): number {
     return this.spectacleTargets.weather;
+  }
+
+  /**
+   * Everything the rival's body needs to perform the fight. Null when no
+   * boss is on the court. Read-only — the character must never feed back
+   * into gameplay.
+   */
+  bossVisualState(): {
+    x: number;
+    z: number;
+    phase: number;
+    health01: number;
+    windingUp: boolean;
+  } | null {
+    const boss = this.objects.brickStates.find((b) => b.type === 'BOSS' && b.alive);
+    if (!boss) return null;
+    return {
+      x: boss.x,
+      z: boss.z,
+      phase: boss.health > 16 ? 1 : boss.health > 8 ? 2 : 3,
+      health01: Math.max(0, Math.min(1, boss.health / 24)),
+      windingUp: this.bossAttackMode === 'telegraph',
+    };
   }
 
   private bossAlive(): boolean {
@@ -898,6 +925,7 @@ export class Game {
       this.bossAttackMode = 'idle';
       this.bossAttackTimer = 9.5 - phase * 1.8;
       this.powerups.showBeam(this.bossAttackZ, '#ff5050', 0.3, 1);
+      this.onBossStrike?.(); // the rival's racket comes through
       this.feel.impact('HEAVY');
       if (Math.abs(this.paddleZ - this.bossAttackZ) < 1.0) {
         this.stunTimer = 1.6;
@@ -1113,6 +1141,10 @@ export class Game {
       else brick.health = 1;
     }
     const result = field.hit(brick);
+    if (brick.type === 'BOSS') {
+      if (result.destroyed) this.onBossDefeated?.();
+      else this.onBossHit?.();
+    }
     if (!result.destroyed) {
       this.audio.armor();
       this.feel.impact('TINY');

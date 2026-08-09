@@ -206,9 +206,12 @@ export class BrickField {
       if (dirty) movingMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // Boss presence: slow menacing scale pulse.
+    // Boss presence: slow menacing scale pulse. The mesh itself is hidden —
+    // BossCharacter stands in its place — but the instance is still kept in
+    // sync so the collision proxy and any debug view stay truthful.
     const bossMesh = this.meshes.get('BOSS');
     if (bossMesh) {
+      bossMesh.visible = false;
       for (const brick of this.states) {
         if (brick.type !== 'BOSS' || !brick.alive) continue;
         const pulse = 1 + Math.sin(this.time * 2.6) * 0.04;
