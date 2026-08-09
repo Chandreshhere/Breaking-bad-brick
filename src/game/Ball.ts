@@ -49,10 +49,12 @@ export class BallVisual {
   energy = 0;
   private readonly sphereMaterial: THREE.MeshStandardMaterial;
   private readonly light: THREE.PointLight;
+  private readonly sphere: THREE.Mesh;
   private readonly innerGlow: THREE.Sprite;
   private readonly outerGlow: THREE.Sprite;
   private pulseAmount = 0;
   private time = 0;
+  private active = true;
 
   constructor(private cfg: VisualConfig) {
     const b = cfg.game.ball;
@@ -66,9 +68,9 @@ export class BallVisual {
       metalness: 0,
       transparent: true, // dissolve fade on life loss
     });
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(b.radius, 32, 16), this.sphereMaterial);
-    sphere.castShadow = true;
-    this.root.add(sphere);
+    this.sphere = new THREE.Mesh(new THREE.SphereGeometry(b.radius, 32, 16), this.sphereMaterial);
+    this.sphere.castShadow = true;
+    this.root.add(this.sphere);
 
     const glowTexture = createGlowTexture();
     const makeGlow = (scale: number, opacity: number, tint: string): THREE.Sprite => {
@@ -94,12 +96,42 @@ export class BallVisual {
     this.root.add(this.light);
   }
 
+  /**
+   * Parks or wakes a pooled ball.
+   *
+   * Critically, this never touches `root.visible` and never detaches the
+   * light. Three.js keys every material's compiled program on the number of
+   * lights in the scene, and it skips invisible subtrees when it gathers
+   * them — so hiding the root, like adding or removing the ball outright,
+   * changes the light count and forces *every* material in the stadium to
+   * recompile. That recompile is the multiball freeze. Parked balls keep
+   * their light in the scene at zero intensity, which costs nothing to
+   * render and keeps the program cache stable.
+   */
+  setActive(on: boolean): void {
+    this.active = on;
+    this.sphere.visible = on;
+    this.innerGlow.visible = on;
+    this.outerGlow.visible = on;
+    if (!on) {
+      this.light.intensity = 0;
+      this.pulseAmount = 0;
+      this.dissolve = 0;
+      this.heavyFactor = 0;
+      this.energy = 0;
+    }
+  }
+
   /** Kick the glow — bricks hit hardest, walls softest. */
   pulse(strength: number): void {
     this.pulseAmount = Math.min(1.5, this.pulseAmount + strength);
   }
 
   update(dt: number): void {
+    if (!this.active) {
+      this.light.intensity = 0;
+      return;
+    }
     const b = this.cfg.game.ball;
     const heavy = this.cfg.game.powerups.heavy;
     const h = this.heavyFactor;

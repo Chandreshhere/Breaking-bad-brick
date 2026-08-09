@@ -19,6 +19,7 @@ export class GameObjects {
   ballVisual: BallVisual | null = null;
   trail: BallTrail | null = null;
   brickField: BrickField | null = null;
+  private extraBalls: { visual: BallVisual; trail: BallTrail; inUse: boolean }[] = [];
 
   constructor(
     private scene: THREE.Scene,
@@ -49,6 +50,20 @@ export class GameObjects {
     this.trail = new BallTrail(this.cfg, createGlowTexture());
     group.add(this.trail.group);
 
+    // Every extra ball is built here, once, and parked. Spawning them on
+    // demand changed the scene's light count mid-rally, which recompiles
+    // every material in the stadium — the multiball freeze.
+    this.extraBalls = [];
+    for (let i = 0; i < this.cfg.game.powerups.maxExtraBalls; i++) {
+      const visual = new BallVisual(this.cfg);
+      const trail = new BallTrail(this.cfg, createGlowTexture());
+      visual.setActive(false);
+      trail.reset();
+      trail.group.visible = false;
+      group.add(visual.root, trail.group);
+      this.extraBalls.push({ visual, trail, inUse: false });
+    }
+
     this.brickField = new BrickField(this.cfg, this.levels.getBrickSpecs());
     group.add(this.brickField.group);
 
@@ -67,23 +82,30 @@ export class GameObjects {
     this.group.add(this.brickField.group);
   }
 
-  /** Runtime extra ball (multiball). Lives inside the group, so rebuilds clean it up too. */
+  /**
+   * Claims a parked extra ball (multiball). Returns null once the pool is
+   * exhausted, which doubles as the hard cap on concurrent balls — stacked
+   * MULTIBALL pickups used to grow the ball count without limit.
+   */
   createExtraBall(): { visual: BallVisual; trail: BallTrail } | null {
     if (!this.group) return null;
-    const visual = new BallVisual(this.cfg);
-    const trail = new BallTrail(this.cfg, createGlowTexture());
-    this.group.add(visual.root, trail.group);
-    return { visual, trail };
+    const slot = this.extraBalls.find((s) => !s.inUse);
+    if (!slot) return null;
+    slot.inUse = true;
+    slot.visual.setActive(true);
+    slot.trail.reset();
+    slot.trail.group.visible = true;
+    return { visual: slot.visual, trail: slot.trail };
   }
 
-  removeExtraBall(visual: BallVisual, trail: BallTrail | null): void {
-    if (!this.group) return;
-    disposeSubtree(visual.root);
-    this.group.remove(visual.root);
-    if (trail) {
-      disposeSubtree(trail.group);
-      this.group.remove(trail.group);
-    }
+  /** Parks an extra ball. Never detaches it — see BallVisual.setActive. */
+  removeExtraBall(visual: BallVisual, _trail: BallTrail | null): void {
+    const slot = this.extraBalls.find((s) => s.visual === visual);
+    if (!slot) return;
+    slot.inUse = false;
+    slot.visual.setActive(false);
+    slot.trail.reset();
+    slot.trail.group.visible = false;
   }
 
   dispose(): void {

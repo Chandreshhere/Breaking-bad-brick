@@ -29,21 +29,29 @@ export class Hud {
     const bar = this.bar;
     bar.style.cssText = [
       'position:absolute',
-      'top:22px',
+      // Notched phones put the status bar over the top of the canvas.
+      'top:calc(18px + env(safe-area-inset-top, 0px))',
       'left:50%',
       'transform:translateX(-50%)',
       'display:flex',
       'align-items:center',
-      'gap:18px',
+      // Tight on a phone, roomy on a desktop — a fixed gap overflowed the
+      // bar in portrait and squeezed "LV 1" onto two lines.
+      'gap:clamp(9px, 2.4vw, 18px)',
+      'white-space:nowrap',
+      'max-width:100%',
+      'padding:0 12px',
+      'box-sizing:border-box',
       'color:#f3efe2',
-      'font-size:clamp(14px, 2.2vw, 20px)',
+      'font-size:clamp(13px, 2.2vw, 20px)',
       'letter-spacing:0.12em',
       'text-shadow:0 1px 8px rgba(0,0,0,0.6)',
     ].join(';');
 
     this.levelEl = document.createElement('span');
     this.levelEl.textContent = 'LV 1';
-    this.levelEl.style.cssText = 'opacity:0.65;letter-spacing:0.2em';
+    this.levelEl.style.cssText =
+      'opacity:0.65;letter-spacing:0.2em;white-space:nowrap;flex:0 0 auto';
 
     const livesLabel = document.createElement('span');
     livesLabel.textContent = 'LIVES';
@@ -54,7 +62,7 @@ export class Hud {
     divider.style.opacity = '0.5';
     this.scoreEl = document.createElement('span');
     this.scoreEl.style.cssText =
-      'color:#e8e04a;font-size:clamp(18px, 3vw, 26px);font-weight:600;min-width:60px';
+      'color:#e8e04a;font-size:clamp(17px, 3vw, 26px);font-weight:600;min-width:52px;white-space:nowrap';
     bar.append(this.levelEl, livesLabel, this.livesEl, divider, this.scoreEl);
 
     this.messageEl = document.createElement('div');

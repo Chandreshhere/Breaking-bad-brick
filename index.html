@@ -18,6 +18,21 @@
         overflow: hidden;
         background: #04120a;
       }
+      /* Mobile browsers size `100%` against the *large* viewport, so the
+         canvas stays taller than the visible area while the URL bar is
+         showing and the bottom of the court sits under browser chrome.
+         `dvh` tracks the area actually on screen. */
+      @supports (height: 100dvh) {
+        html,
+        body,
+        #app {
+          height: 100dvh;
+        }
+      }
+      body {
+        position: fixed;
+        inset: 0;
+      }
       body {
         user-select: none;
         -webkit-user-select: none;

@@ -39,6 +39,18 @@ export interface PaddleInfo {
 export class PowerupManager {
   readonly group = new THREE.Group();
   private capsules: Capsule[] = [];
+  private capsuleDiscGeo!: THREE.CylinderGeometry;
+  private capsuleRingGeo!: THREE.TorusGeometry;
+  private readonly capsuleMats: Record<
+    string,
+    { disc: THREE.MeshStandardMaterial; ring: THREE.MeshStandardMaterial }
+  > = {};
+  private readonly capsulePool: {
+    root: THREE.Group;
+    disc: THREE.Mesh;
+    ring: THREE.Mesh;
+    inUse: boolean;
+  }[] = [];
   private readonly shield: THREE.Mesh;
   private readonly shieldMaterial: THREE.MeshStandardMaterial;
   private readonly beam: THREE.Mesh;
@@ -81,6 +93,50 @@ export class PowerupManager {
     this.beam.visible = false;
 
     this.group.add(this.shield, this.beam);
+    this.buildCapsulePool();
+  }
+
+  /**
+   * Capsules used to allocate a geometry and two materials per drop and
+   * dispose them on pickup. Disposing a material releases its compiled
+   * program, so a burst of drops meant compile / free / recompile on the
+   * render thread — the hitch during a capsule storm. Geometry and one
+   * material pair per bonus type are built once here and shared; drops just
+   * claim a parked mesh and point it at the right materials.
+   */
+  private buildCapsulePool(): void {
+    this.capsuleDiscGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.09, 20);
+    this.capsuleRingGeo = new THREE.TorusGeometry(0.36, 0.04, 10, 32);
+
+    for (const type of POWERUP_TYPES) {
+      const color = this.cfg.game.powerups.capsuleColors[type];
+      this.capsuleMats[type] = {
+        disc: new THREE.MeshStandardMaterial({
+          color: '#0e2c1a',
+          emissive: new THREE.Color(color),
+          emissiveIntensity: 1.4,
+          roughness: 0.4,
+        }),
+        ring: new THREE.MeshStandardMaterial({
+          color,
+          emissive: new THREE.Color(color),
+          emissiveIntensity: 2.2,
+          roughness: 0.4,
+        }),
+      };
+    }
+
+    const first = this.capsuleMats[POWERUP_TYPES[0]];
+    for (let i = 0; i < this.cfg.game.powerups.maxCapsules; i++) {
+      const root = new THREE.Group();
+      const disc = new THREE.Mesh(this.capsuleDiscGeo, first.disc);
+      const ring = new THREE.Mesh(this.capsuleRingGeo, first.ring);
+      ring.rotation.x = Math.PI / 2;
+      root.add(disc, ring);
+      root.visible = false;
+      this.group.add(root);
+      this.capsulePool.push({ root, disc, ring, inUse: false });
+    }
   }
 
   get isXl(): boolean {
@@ -116,32 +172,18 @@ export class PowerupManager {
     const p = this.cfg.game.powerups;
     if (!force && Math.random() > p.dropChance * chanceScale) return;
     const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-    const color = p.capsuleColors[type];
 
-    const root = new THREE.Group();
-    const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, 0.24, 0.09, 20),
-      new THREE.MeshStandardMaterial({
-        color: '#0e2c1a',
-        emissive: new THREE.Color(color),
-        emissiveIntensity: 1.4,
-        roughness: 0.4,
-      })
-    );
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.36, 0.04, 10, 32),
-      new THREE.MeshStandardMaterial({
-        color,
-        emissive: new THREE.Color(color),
-        emissiveIntensity: 2.2,
-        roughness: 0.4,
-      })
-    );
-    ring.rotation.x = Math.PI / 2;
-    root.add(disc, ring);
-    root.position.set(x, 0.35, z);
-    this.group.add(root);
-    this.capsules.push({ type, root, seed: Math.random() * Math.PI * 2 });
+    const slot = this.capsulePool.find((s) => !s.inUse);
+    if (!slot) return; // pool exhausted — the screen is already saturated
+
+    const mats = this.capsuleMats[type];
+    slot.inUse = true;
+    slot.disc.material = mats.disc;
+    slot.ring.material = mats.ring;
+    slot.root.position.set(x, 0.35, z);
+    slot.root.rotation.y = 0;
+    slot.root.visible = true;
+    this.capsules.push({ type, root: slot.root, seed: Math.random() * Math.PI * 2 });
   }
 
   /** Advances capsules/visuals; returns power-ups caught by the paddle this frame. */
@@ -212,10 +254,15 @@ export class PowerupManager {
     this.shield.visible = false;
   }
 
+  /** Parks a capsule back in the pool. Shared geometry/materials survive. */
   private removeCapsule(capsule: Capsule): void {
-    this.group.remove(capsule.root);
-    disposeSubtree(capsule.root);
-    this.capsules.splice(this.capsules.indexOf(capsule), 1);
+    const slot = this.capsulePool.find((s) => s.root === capsule.root);
+    if (slot) {
+      slot.inUse = false;
+      slot.root.visible = false;
+    }
+    const i = this.capsules.indexOf(capsule);
+    if (i >= 0) this.capsules.splice(i, 1);
   }
 
   dispose(): void {

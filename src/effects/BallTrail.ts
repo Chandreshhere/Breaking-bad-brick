@@ -34,6 +34,19 @@ export class BallTrail {
     }
   }
 
+  /**
+   * Clears the streak. Pooled balls are reused, so a reclaimed trail must
+   * forget where its previous life ended or it draws a line across the court.
+   */
+  reset(): void {
+    this.history.length = 0;
+    this.sampleTimer = 0;
+    for (const sprite of this.sprites) {
+      sprite.visible = false;
+      (sprite.material as THREE.SpriteMaterial).opacity = 0;
+    }
+  }
+
   update(dt: number, head: THREE.Vector3, speedRatio: number, active: boolean): void {
     const t = this.cfg.game.ball.trail;
     if (!active) {

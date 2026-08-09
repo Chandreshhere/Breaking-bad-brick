@@ -292,6 +292,8 @@ export class Experience {
     if (!isShot && params.get('debug') === '1') this.debugGui = createDebugGui(this);
 
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('orientationchange', this.onViewportChange);
+    window.visualViewport?.addEventListener('resize', this.onViewportChange);
     window.addEventListener('keydown', this.onKeyDown);
     this.renderer.setAnimationLoop(this.tick);
   }
@@ -406,9 +408,25 @@ export class Experience {
   private onResize = (): void => {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
+    if (w < 1 || h < 1) return; // some mobile browsers report 0 mid-rotation
     this.rig.setAspect(w / h);
     this.renderer.setSize(w, h);
     this.post.setSize(w, h);
+  };
+
+  /**
+   * Mobile browsers resize the visible area without firing `resize` — the URL
+   * bar collapsing on scroll, the keyboard opening, the rotation animation.
+   * visualViewport reports those; a deferred pass after orientationchange
+   * catches the rest, since the new dimensions are not readable on the event.
+   */
+  private onViewportChange = (): void => {
+    this.onResize();
+    // Two settling passes: iOS reports stale sizes for a frame or two after
+    // an orientation change, and one late correction is cheaper than a
+    // permanently mis-sized framebuffer.
+    requestAnimationFrame(this.onResize);
+    window.setTimeout(this.onResize, 250);
   };
 
   private unlockAudio = (): void => {
@@ -498,6 +516,8 @@ export class Experience {
   /** Tears the experience down completely (HMR, tests, route unmount). */
   dispose(): void {
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('orientationchange', this.onViewportChange);
+    window.visualViewport?.removeEventListener('resize', this.onViewportChange);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('pointerdown', this.unlockAudio);
     this.renderer.setAnimationLoop(null);

@@ -36,6 +36,25 @@ export const VISUAL_CONFIG = {
         fov: 34,
       },
     } satisfies Record<CameraStateName, CameraStateConfig>,
+
+    /**
+     * Portrait framing. A phone screen is far taller than it is wide, and a
+     * fixed vertical FOV handles that badly in both directions: leave it
+     * alone and the side walls crop away, widen it and the court shrinks to
+     * a small band with dead stands above and an empty void below. So
+     * portrait gets its own camera station — higher and pitched further
+     * down-court, which pulls the near baseline to the bottom of the frame —
+     * and the FOV is *solved* so the court fills the screen width exactly
+     * rather than being multiplied by a guess.
+     */
+    portrait: {
+      startAspect: 1.15, // blend begins once the viewport is this narrow
+      fullAspect: 0.62, // …and is fully portrait by here
+      position: [0, 18.2, 10.6] as Vec3,
+      target: [0, 0.3, -1.6] as Vec3,
+      fitHalfWidth: 7.05, // world half-width that must span the screen
+      maxFov: 82,
+    },
   },
 
   // The reference court is deliberately depth-compressed versus a real
@@ -198,6 +217,14 @@ export const VISUAL_CONFIG = {
         lightScale: 1.7,
       },
       multiballCount: 2,
+      /**
+       * Hard cap on simultaneous extra balls. Also the size of the pooled
+       * ball pool — stacked MULTIBALL pickups previously grew the ball count
+       * (and the scene's light count) without limit.
+       */
+      maxExtraBalls: 5,
+      /** Pooled capsule meshes; also caps how many can fall at once. */
+      maxCapsules: 14,
       shieldZ: 7.9, // behind the paddle zone, in front of the loss line
     },
     feel: {
