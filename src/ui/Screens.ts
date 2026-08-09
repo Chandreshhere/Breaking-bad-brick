@@ -46,6 +46,40 @@ const CSS = /* css */ `
 .acb-ring svg { width: 46%; height: 46%; }
 .acb-bonus-label { font-size: clamp(11px, 1.1vw, 16px); letter-spacing: 0.14em; color: #f2edda; }
 
+/* Results banner: the near-miss line is the reason people tap REPLAY. */
+.acb-banner { font-size: clamp(13px, 2.4vw, 19px); font-weight: 700; letter-spacing: 0.16em;
+  padding: 9px 20px; border-radius: 999px; animation: acb-pop 0.4s 0.4s both; }
+.acb-banner-best { color: #0c2717; background: #efd42e; }
+.acb-banner-near { color: #ffd8a0; background: rgba(255,140,58,0.16); border: 1px solid rgba(255,140,58,0.5); }
+@keyframes acb-pop { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+.acb-pill-reward { background: #2a6cff; color: #fff; }
+
+.acb-best { position: absolute; left: 9%; bottom: 6%; font-size: clamp(11px, 2vw, 14px);
+  letter-spacing: 0.22em; color: rgba(242,237,218,0.62); }
+.acb-best b { color: #efd42e; font-size: 1.35em; letter-spacing: 0.08em; }
+
+/* Coin readout + shop grid */
+.acb-coins { position: absolute; top: 22px; right: 26px; font-size: clamp(13px, 2.4vw, 18px);
+  font-weight: 700; letter-spacing: 0.12em; color: #efd42e; display: flex; align-items: center; gap: 8px; }
+.acb-shop-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px; padding: 13vh 5% 4vh; box-sizing: border-box; }
+.acb-shop-tabs { display: flex; gap: 10px; }
+.acb-tab { background: none; border: 1px solid rgba(242,237,218,0.35); color: #f2edda; border-radius: 999px;
+  padding: 8px 20px; font: inherit; font-size: 12px; letter-spacing: 0.16em; cursor: pointer; }
+.acb-tab-on { background: #f2edda; color: #0c2717; border-color: #f2edda; }
+.acb-shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  width: min(760px, 100%); overflow-y: auto; }
+@media (max-aspect-ratio: 4/5) { .acb-shop-grid { grid-template-columns: repeat(2, 1fr); } }
+.acb-item { background: rgba(0,0,0,0.35); border: 1px solid rgba(242,237,218,0.18); border-radius: 14px;
+  padding: 14px 8px 12px; display: flex; flex-direction: column; align-items: center; gap: 9px;
+  cursor: pointer; font: inherit; color: #f2edda; }
+.acb-item-on { border-color: #efd42e; box-shadow: 0 0 0 1px #efd42e inset; }
+.acb-swatch { width: 44px; height: 44px; border-radius: 50%; }
+.acb-swatch-pad { width: 58px; height: 22px; border-radius: 999px; }
+.acb-item-name { font-size: 11px; letter-spacing: 0.14em; }
+.acb-item-price { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #efd42e; }
+.acb-item-lock { color: #9aa8a0; }
+
 /* Portrait: the absolute landscape layout collapses on a phone — the CTA
    lands on top of the heading. Stack it instead, and put the button at the
    bottom where a thumb actually reaches. */
@@ -118,6 +152,18 @@ const CSS = /* css */ `
   letter-spacing: 0.2em; }
 .acb-version { position: absolute; left: 26px; bottom: 20px; font-size: 11px;
   letter-spacing: 0.22em; color: rgba(242,237,218,0.45); pointer-events: none; }
+
+/* Portrait results: the title used to collide with the wordmark, and with a
+   banner, stats and three buttons the column overflowed off-screen. Scroll
+   it, pad it clear of the wordmark, and shrink the headline. */
+@media (max-aspect-ratio: 4/5) {
+  .acb-center { justify-content: flex-start; gap: 14px; overflow-y: auto;
+    padding: 12vh 6% calc(4vh + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+  .acb-results-title { font-size: clamp(28px, 9vw, 46px); }
+  .acb-results-score { font-size: clamp(44px, 15vw, 74px); }
+  .acb-stats { min-width: min(320px, 86vw); }
+}
+
 `;
 
 /** Menu arena catalogue — key null is the automatic 3-level cycle. */
@@ -130,6 +176,8 @@ const MAPS: Array<{ key: string | null; name: string; sub: string; color: string
   { key: 'NEON_ARCADE', name: 'NEON ARCADE', sub: 'INSERT COIN', color: '#ffd21e' },
   { key: 'COMIC_IMPACT', name: 'COMIC IMPACT', sub: 'BAM! POW! SMASH!', color: '#ff3ad8' },
 ];
+
+const COIN_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="12" r="9" fill="#efd42e"/><circle cx="12" cy="12" r="5.6" fill="none" stroke="#0c2717" stroke-width="1.6"/></svg>`;
 
 const BALL_SVG = `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0c2717"/><path d="M4 6 C10 10 10 14 4 18 M20 6 C14 10 14 14 20 18" stroke="#efd42e" stroke-width="1.8" fill="none"/></svg>`;
 
@@ -199,7 +247,8 @@ export class Screens {
   showIntro(
     onPlay: () => void,
     onSettings?: () => void,
-    arena?: { label: string; open: () => void }
+    arena?: { label: string; open: () => void },
+    extras: { best?: number; coins?: number; onShop?: () => void } = {}
   ): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
@@ -211,9 +260,20 @@ export class Screens {
         <div class="acb-title-main">ACE BREAKER</div>
       </div>
       <div class="acb-divider"></div>
+      ${
+        extras.coins !== undefined
+          ? `<div class="acb-coins">${COIN_SVG}${extras.coins}</div>`
+          : ''
+      }
+      ${
+        extras.best
+          ? `<div class="acb-best">BEST <b>${extras.best}</b></div>`
+          : ''
+      }
       <div class="acb-intro-cta">
         <button class="acb-pill" data-action="play">${BALL_SVG}PLAY</button>
         ${arena ? `<button class="acb-pill acb-pill-ghost" data-action="arena">ARENA: ${arena.label}</button>` : ''}
+        ${extras.onShop ? '<button class="acb-pill acb-pill-ghost" data-action="shop">SHOP</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="play"]')!.onclick = onPlay;
     const gear = el.querySelector<HTMLButtonElement>('[data-action="settings"]')!;
@@ -221,6 +281,8 @@ export class Screens {
     else gear.remove();
     const arenaBtn = el.querySelector<HTMLButtonElement>('[data-action="arena"]');
     if (arenaBtn && arena) arenaBtn.onclick = arena.open;
+    const shopBtn = el.querySelector<HTMLButtonElement>('[data-action="shop"]');
+    if (shopBtn && extras.onShop) shopBtn.onclick = extras.onShop;
     this.show(el);
   }
 
@@ -347,7 +409,14 @@ export class Screens {
     onReplay: () => void,
     buttonLabel = 'REPLAY',
     stats: { label: string; value: string }[] = [],
-    onMainMenu?: () => void
+    onMainMenu?: () => void,
+    extras: {
+      /** "NEW BEST" or the near-miss line — the strongest retry hook. */
+      banner?: { text: string; tone: 'best' | 'near' };
+      /** Rewarded-ad continue. Omitted when no ad is available. */
+      onContinue?: () => void;
+      continueLabel?: string;
+    } = {}
   ): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
@@ -365,11 +434,25 @@ export class Screens {
         <div class="acb-results-title">${title}</div>
         <div class="acb-results-sub">SCORE</div>
         <div class="acb-results-score">0</div>
+        ${
+          extras.banner
+            ? `<div class="acb-banner acb-banner-${extras.banner.tone}">${extras.banner.text}</div>`
+            : ''
+        }
         ${statLines ? `<div class="acb-stats">${statLines}</div>` : ''}
+        ${
+          extras.onContinue
+            ? `<button class="acb-pill acb-pill-reward" data-action="continue">▶ ${
+                extras.continueLabel ?? 'WATCH AD TO CONTINUE'
+              }</button>`
+            : ''
+        }
         <button class="acb-pill" data-action="replay">${BALL_SVG}${buttonLabel}</button>
         ${onMainMenu ? '<button class="acb-pill acb-pill-ghost" data-action="menu">MAIN MENU</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="replay"]')!.onclick = onReplay;
+    const cont = el.querySelector<HTMLButtonElement>('[data-action="continue"]');
+    if (cont && extras.onContinue) cont.onclick = extras.onContinue;
     const menu = el.querySelector<HTMLButtonElement>('[data-action="menu"]');
     if (menu && onMainMenu) menu.onclick = onMainMenu;
     this.show(el);
@@ -385,6 +468,70 @@ export class Screens {
       if (t < 1 && scoreEl.isConnected) requestAnimationFrame(count);
     };
     requestAnimationFrame(count);
+  }
+
+
+  /**
+   * Shop. Items are cosmetic only — nothing here changes physics or scoring,
+   * so buying is never pay-to-win. Owned items equip on tap; unowned ones
+   * buy and equip in one tap when affordable.
+   */
+  showShop(opts: {
+    coins: number;
+    tab: 'ball' | 'paddle';
+    items: Array<{
+      id: string;
+      name: string;
+      price: number;
+      owned: boolean;
+      equipped: boolean;
+      swatch: string;
+      swatch2: string;
+    }>;
+    onTab: (tab: 'ball' | 'paddle') => void;
+    onPick: (id: string) => void;
+    onBack: () => void;
+  }): void {
+    const el = document.createElement('div');
+    el.className = 'acb-screen';
+    const cards = opts.items
+      .map((it) => {
+        const swatch =
+          opts.tab === 'ball'
+            ? `<span class="acb-swatch" style="background:radial-gradient(circle at 34% 30%, ${it.swatch} 0%, ${it.swatch2} 70%)"></span>`
+            : `<span class="acb-swatch-pad" style="background:${it.swatch};border:2px solid ${it.swatch2}"></span>`;
+        const state = it.equipped
+          ? '<span class="acb-item-price">EQUIPPED</span>'
+          : it.owned
+            ? '<span class="acb-item-price">TAP TO USE</span>'
+            : `<span class="acb-item-price ${opts.coins >= it.price ? '' : 'acb-item-lock'}">${it.price}</span>`;
+        return `<button class="acb-item${it.equipped ? ' acb-item-on' : ''}" data-id="${it.id}">
+            ${swatch}
+            <span class="acb-item-name">${it.name}</span>
+            ${state}
+          </button>`;
+      })
+      .join('');
+    el.innerHTML = `
+      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-coins">${COIN_SVG}${opts.coins}</div>
+      <div class="acb-shop-wrap">
+        <h2 style="margin:0;letter-spacing:0.2em;font-size:clamp(18px,4vw,26px)">SHOP</h2>
+        <div class="acb-shop-tabs">
+          <button class="acb-tab${opts.tab === 'ball' ? ' acb-tab-on' : ''}" data-tab="ball">BALLS</button>
+          <button class="acb-tab${opts.tab === 'paddle' ? ' acb-tab-on' : ''}" data-tab="paddle">PADDLES</button>
+        </div>
+        <div class="acb-shop-grid">${cards}</div>
+        <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
+      </div>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
+      b.onclick = (): void => opts.onTab(b.dataset['tab'] as 'ball' | 'paddle');
+    });
+    el.querySelectorAll<HTMLButtonElement>('[data-id]').forEach((b) => {
+      b.onclick = (): void => opts.onPick(b.dataset['id']!);
+    });
+    el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
+    this.show(el);
   }
 
   showPause(onResume: () => void, onSettings?: () => void, onMainMenu?: () => void): void {

@@ -20,7 +20,10 @@ import { Game } from '../game/Game';
 import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
+import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
+import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
+import { ProgressStore } from '../game/Progress';
 import { PowerupManager } from '../game/Powerups';
 import { Hud } from '../ui/Hud';
 import { Screens } from '../ui/Screens';
@@ -67,6 +70,12 @@ export class Experience {
   readonly vfx: Vfx;
   readonly powerups: PowerupManager;
   readonly boss = new BossCharacter();
+  readonly progress = new ProgressStore();
+  /**
+   * Swap this for a real network (AdMob via Capacitor on the stores, an
+   * HTML5 ad SDK on web) and nothing else changes. See src/game/Ads.ts.
+   */
+  ads: RewardedAdProvider = new PlaceholderRewardedAd();
   readonly audio = new AudioFx();
   readonly music = new MusicEngine(this.audio);
   readonly feel: GameFeelManager;
@@ -226,6 +235,19 @@ export class Experience {
       applyLevelEnvironment(this.levels.level);
     };
     this.loop.onOverdrive = (): void => this.weather.forceStrike();
+    // Persisted cosmetics, applied to the freshly built objects.
+    this.applyCosmetics();
+
+    this.loop.onRunFinished = (score, level, combo) =>
+      this.progress.finishRun(score, level, combo);
+    this.loop.adAvailable = (): boolean => this.ads.isAvailable();
+    this.loop.getProfileSummary = (): { best: number; coins: number } => ({
+      best: this.progress.profile.bestScore,
+      coins: this.progress.profile.coins,
+    });
+    this.loop.onOpenShop = (onBack): void => this.openShop('ball', onBack);
+    this.loop.showRewardedAd = async (): Promise<boolean> =>
+      (await this.ads.show()) === 'completed';
     this.loop.onBossStrike = (): void => this.boss.strike();
     this.loop.onBossHit = (): void => this.boss.recoil();
     this.loop.onBossDefeated = (): void => this.boss.defeat();
@@ -312,6 +334,55 @@ export class Experience {
     window.visualViewport?.addEventListener('resize', this.onViewportChange);
     window.addEventListener('keydown', this.onKeyDown);
     this.renderer.setAnimationLoop(this.tick);
+  }
+
+  /** Re-applies the equipped ball/paddle skins to the live objects. */
+  applyCosmetics(): void {
+    applyBallSkin(this.cfg, this.progress.profile.ball);
+    applyPaddleSkin(this.cfg, this.progress.profile.paddle, this.game.paddle);
+  }
+
+  /**
+   * Shop. Cosmetic only — nothing sold here touches physics or scoring, so
+   * spending can never buy an advantage.
+   */
+  openShop(tab: 'ball' | 'paddle', onBack: () => void): void {
+    const isBall = tab === 'ball';
+    const defs = isBall ? BALL_SKINS : PADDLE_SKINS;
+    const p = this.progress.profile;
+    this.screens.showShop({
+      coins: p.coins,
+      tab,
+      items: defs.map((d) => ({
+        id: d.id,
+        name: d.name,
+        price: d.price,
+        owned: this.progress.owns(tab, d.id),
+        equipped: (isBall ? p.ball : p.paddle) === d.id,
+        swatch: 'color' in d ? d.color : d.bodyColor,
+        swatch2: 'emissive' in d ? d.emissive : d.rimColor,
+      })),
+      onTab: (next): void => this.openShop(next, onBack),
+      onPick: (id): void => {
+        const def = defs.find((d) => d.id === id);
+        if (!def) return;
+        if (this.progress.owns(tab, id)) {
+          this.progress.equip(tab, id);
+          this.audio.powerup();
+        } else if (!this.progress.buy(tab, id, def.price)) {
+          this.audio.wall(); // can't afford it
+          return;
+        } else {
+          this.audio.win();
+        }
+        this.applyCosmetics();
+        this.openShop(tab, onBack); // repaint with the new state
+      },
+      onBack: (): void => {
+        this.audio.click();
+        onBack();
+      },
+    });
   }
 
   applyEnvironment(): void {

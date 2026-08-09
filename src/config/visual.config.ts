@@ -52,11 +52,10 @@ export const VISUAL_CONFIG = {
       fullAspect: 0.62, // …and is fully portrait by here
       position: [0, 18.2, 10.6] as Vec3,
       target: [0, 0.3, -1.6] as Vec3,
-      // Fit the *play* area (line-to-line), not the whole slab. Fitting the
-      // slab left the court small with a dead stand band above and a dead
-      // apron band below; cropping the slab edge and the side walls trades
-      // scenery nobody plays on for a much bigger court.
-      fitHalfWidth: 6.0,
+      // Slack beyond the inner wall face that the fit must also keep on
+      // screen. The solver works from the paddle's real travel limits, so
+      // this is a comfort margin, not the framing itself.
+      fitMargin: 0.35,
       maxFov: 82,
     },
   },

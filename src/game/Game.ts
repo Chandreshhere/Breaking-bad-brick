@@ -123,6 +123,26 @@ export class Game {
   onOpenDevTools: (() => void) | null = null;
   private stunTimer = 0;
   /** Fired when the rival actually swings / is hit / falls — visuals only. */
+  /** Progress + rewarded-ad seams, supplied by Experience. */
+  onRunFinished:
+    | ((score: number, level: number, combo: number) => {
+        coinsEarned: number;
+        isBest: boolean;
+        previousBest: number;
+        shortBy: number;
+      })
+    | null = null;
+  adAvailable: (() => boolean) | null = null;
+  /** Intro readouts + the shop entry point, both owned by Experience. */
+  getProfileSummary: (() => { best: number; coins: number }) | null = null;
+  onOpenShop: ((onBack: () => void) => void) | null = null;
+  showRewardedAd: (() => Promise<boolean>) | null = null;
+  /** One rewarded continue per run — otherwise a run never really ends. */
+  private continueUsed = false;
+  /** Guards double-paying a run that ends and is then abandoned. */
+  private runFiled = false;
+  /** Skips the full 3-2-1 on a retry; the gap between dying and playing again matters. */
+  private fastCountdown = false;
   onBossStrike: (() => void) | null = null;
   onBossHit: (() => void) | null = null;
   onBossDefeated: (() => void) | null = null;
@@ -309,6 +329,15 @@ export class Game {
       {
         label: this.screens.mapName(this.selectedMap),
         open: (): void => this.openMapSelect(() => this.enterIntro()),
+      },
+      {
+        ...(this.getProfileSummary?.() ?? {}),
+        onShop: this.onOpenShop
+          ? (): void => {
+              this.audio.click();
+              this.onOpenShop?.(() => this.enterIntro());
+            }
+          : undefined,
       }
     );
   }
@@ -383,9 +412,12 @@ export class Game {
     if (this.silent) {
       this.countdownValue = -1; // waits for a click instead of ticking
     } else {
-      this.countdownValue = 3;
+      // A retry skips straight to "1". Four seconds of countdown between
+      // losing and playing again is where "one more go" goes to die.
+      this.countdownValue = this.fastCountdown ? 1 : 3;
+      this.fastCountdown = false;
       this.countdownTimer = 0;
-      this.screens.setCountdown(3);
+      this.screens.setCountdown(this.countdownValue);
     }
   }
 
@@ -423,10 +455,15 @@ export class Game {
   /** Abandon the run and return to the intro menu, fully reset. */
   private returnToMenu(): void {
     this.audio.click();
+    // Abandoning mid-run still banks it — otherwise a player who clears five
+    // levels and then quits to the menu loses every coin and their best.
+    this.fileRun();
     this.setState('intro'); // before the rebuild so no countdown auto-starts
     this.levels.setLevel(1);
     this.lives = this.cfg.game.rules.lives;
     this.score = 0;
+    this.runFiled = false;
+    this.continueUsed = false;
     this.onLevelChanged?.(this.levels.level); // restore the level-1 arena
     this.rebuildObjects();
     this.handleRebuild();
@@ -506,6 +543,8 @@ export class Game {
       this.levels.setLevel(1);
       this.lives = this.cfg.game.rules.lives;
       this.score = 0;
+      this.continueUsed = false; // a new run earns a new continue
+      this.runFiled = false;
     }
     this.onLevelChanged?.(this.levels.level);
     this.rebuildObjects();
@@ -565,16 +604,79 @@ export class Game {
     }
     this.setState('gameOver');
     this.audio.gameOver();
-    if (!this.silent) {
-      this.screens.showResults(
-        'GAME OVER',
-        this.score,
-        () => this.restart(false),
-        'REPLAY',
-        [],
-        () => this.returnToMenu()
-      );
+    if (this.silent) return;
+
+    const run = this.fileRun();
+    const stats: { label: string; value: string }[] = [
+      { label: 'LEVEL REACHED', value: String(this.levels.level) },
+    ];
+    if (this.combo.highestCombo > 1) {
+      stats.push({ label: 'BEST COMBO', value: `×${this.combo.highestCombo}` });
     }
+    if (run && run.coinsEarned > 0) {
+      stats.push({ label: 'COINS EARNED', value: `+${run.coinsEarned}` });
+    }
+
+    // The near-miss line is the point of the whole screen.
+    let banner: { text: string; tone: 'best' | 'near' } | undefined;
+    if (run?.isBest && this.score > 0) {
+      banner = { text: 'NEW BEST', tone: 'best' };
+    } else if (run && run.shortBy > 0 && run.previousBest > 0) {
+      banner = { text: `${run.shortBy} SHORT OF YOUR BEST`, tone: 'near' };
+    }
+
+    const canContinue = !this.continueUsed && (this.adAvailable?.() ?? false) && this.score > 0;
+    this.screens.showResults(
+      'GAME OVER',
+      this.score,
+      () => {
+        this.fastCountdown = true; // straight back in
+        this.restart(false);
+      },
+      'REPLAY',
+      stats,
+      () => this.returnToMenu(),
+      {
+        banner,
+        onContinue: canContinue ? (): void => void this.continueAfterAd() : undefined,
+        continueLabel: 'WATCH AD — KEEP THIS RUN',
+      }
+    );
+  }
+
+  /**
+   * Rewarded continue: the run resumes at the same level with the score
+   * intact and one life restored. Granted only if the ad actually completes,
+   * and only once per run so a score can still be lost for good.
+   */
+  /**
+   * Banks the run exactly once. A run ends by dying or by walking away, and
+   * both must pay out — but a game-over screen followed by MAIN MENU must
+   * not pay twice.
+   */
+  private fileRun(): ReturnType<NonNullable<Game['onRunFinished']>> | null {
+    if (this.runFiled || this.score <= 0) return null;
+    this.runFiled = true;
+    return this.onRunFinished?.(this.score, this.levels.level, this.combo.highestCombo) ?? null;
+  }
+
+  private async continueAfterAd(): Promise<void> {
+    if (this.continueUsed || !this.showRewardedAd) return;
+    this.continueUsed = true;
+    const completed = await this.showRewardedAd();
+    if (!completed) {
+      this.hud.powerupFlash('AD NOT COMPLETED', '#ff8080');
+      return;
+    }
+    this.lives = 1;
+    this.runFiled = false; // the run is live again; it will bank when it ends
+    this.hud.setLives(this.lives);
+    this.screens.hideAll();
+    this.fastCountdown = true;
+    this.rebuildObjects();
+    this.handleRebuild();
+    this.hud.powerupFlash('BACK IN', '#7dff6a');
+    this.startCountdown();
   }
 
   /** levelClear cinematic finished — show the animated results screen. */
