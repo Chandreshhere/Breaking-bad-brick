@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Breaking Bad Brick</string>
+    <string name="title_activity_main">Breaking Bad Brick</string>
+    <string name="package_name">in.synquic.breakingbadbrick</string>
+    <string name="custom_url_scheme">in.synquic.breakingbadbrick</string>
+</resources>

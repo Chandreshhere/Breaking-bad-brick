@@ -13,9 +13,21 @@
     "functions:build": "npm --prefix functions run build",
     "functions:typecheck": "npm --prefix functions run typecheck",
     "deploy:functions:dev": "npm --prefix functions run build && firebase deploy --only functions -P dev",
-    "deploy:rules:dev": "firebase deploy --only firestore:rules,firestore:indexes -P dev"
+    "deploy:rules:dev": "firebase deploy --only firestore:rules,firestore:indexes -P dev",
+    "cap:sync": "npm run build && npx cap sync",
+    "android:build": "JAVA_HOME=\"$(test -d /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home && echo /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home || echo $JAVA_HOME)\" npm run cap:sync && cd android && JAVA_HOME=\"$(test -d /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home && echo /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home || echo $JAVA_HOME)\" ./gradlew assembleDebug",
+    "android:open": "npx cap open android",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "firebase": "^12.17.1",
     "lil-gui": "^0.20.0",
     "three": "^0.180.0"

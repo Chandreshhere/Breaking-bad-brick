@@ -493,6 +493,39 @@ export class Game {
     }
   };
 
+  /** True when a rally is live and losing focus would cost the player. */
+  get isPlaying(): boolean {
+    return this.state === 'playing' || this.state === 'countdown';
+  }
+
+  /** Forces the pause screen — used when the app goes to the background. */
+  pauseForBackground(): void {
+    if (this.state !== 'playing') return;
+    this.setState('paused');
+    this.showPauseScreen();
+  }
+
+  /**
+   * Android back. Returns false only at the top menu, where the shell is
+   * then allowed to exit — anywhere else, back steps within the game.
+   */
+  handleBackPress(): boolean {
+    if (this.overlayOpen) return true; // a screen will close itself
+    if (this.state === 'playing' || this.state === 'countdown') {
+      this.togglePause();
+      return true;
+    }
+    if (this.state === 'paused' || this.state === 'gameOver' || this.state === 'win') {
+      this.returnToMenu();
+      return true;
+    }
+    if (this.state === 'bonuses') {
+      this.enterIntro();
+      return true;
+    }
+    return false; // already at the intro
+  }
+
   togglePause(): void {
     if (this.overlayOpen) return; // Escape/p inside settings must not resume
     if (this.state === 'playing') {

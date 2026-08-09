@@ -69,6 +69,23 @@ export class AudioFx {
     return this.muted;
   }
 
+  /**
+   * Silences everything while the app is backgrounded.
+   *
+   * Suspending the context rather than muting the gain: a suspended context
+   * stops scheduling work entirely, so the music scheduler and every decaying
+   * envelope freeze instead of running unheard behind another app.
+   */
+  async setSuspended(suspended: boolean): Promise<void> {
+    if (!this.ctx) return;
+    try {
+      if (suspended && this.ctx.state === 'running') await this.ctx.suspend();
+      else if (!suspended && this.ctx.state === 'suspended') await this.ctx.resume();
+    } catch {
+      /* context already closed */
+    }
+  }
+
   dispose(): void {
     for (const src of this.rainSources) src.stop();
     this.rainSources = [];

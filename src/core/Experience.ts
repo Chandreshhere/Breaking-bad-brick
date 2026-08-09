@@ -42,6 +42,7 @@ import { PowerupManager } from '../game/Powerups';
 import { Hud } from '../ui/Hud';
 import { Screens } from '../ui/Screens';
 import { CameraRig } from './CameraRig';
+import { NativeShell } from './NativeShell';
 import { createDebugGui } from './DebugGui';
 import {
   AdaptiveQuality,
@@ -103,7 +104,11 @@ export class Experience {
    */
   ads: RewardedAdProvider = new ConsentGatedAd(
     isNativeShell()
-      ? new AdMobRewardedAd(adConfig().rewardedId, () => this.remote.uid)
+      ? new AdMobRewardedAd(
+          adConfig().rewardedId,
+          () => this.remote.uid,
+          adConfig().isTest
+        )
       : new PlaceholderRewardedAd(),
     () => this.consent.adsAllowed
   );
@@ -124,6 +129,7 @@ export class Experience {
   private qualityTier: QualityTier = 'HIGH';
   /** Frame-time watchdog — only active in AUTO mode; only steps DOWN. */
   private adaptive: AdaptiveQuality | null = null;
+  private readonly shell = new NativeShell();
   private readonly clock = new THREE.Clock();
   private readonly shakeQuat = new THREE.Quaternion();
   private controls: OrbitControls | null = null;
@@ -319,6 +325,17 @@ export class Experience {
       return true;
     };
     this.loop.onOpenPrivacy = (onBack): void => this.openPrivacy(onBack);
+
+    // Native shell behaviour: background pauses and silences, back steps
+    // through the game's screens instead of quitting mid-rally.
+    void this.shell.attach({
+      onBack: (): boolean => this.loop.handleBackPress(),
+      onPause: (): void => {
+        this.loop.pauseForBackground();
+        void this.audio.setSuspended(true);
+      },
+      onResume: (): void => void this.audio.setSuspended(false),
+    });
 
     // Fire and forget: identity + launch payload. Deliberately not awaited —
     // the game must reach the intro screen whether or not this resolves.
@@ -893,6 +910,7 @@ export class Experience {
 
   /** Tears the experience down completely (HMR, tests, route unmount). */
   dispose(): void {
+    this.shell.dispose();
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('orientationchange', this.onViewportChange);
     window.visualViewport?.removeEventListener('resize', this.onViewportChange);

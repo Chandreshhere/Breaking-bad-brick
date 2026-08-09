@@ -44,14 +44,18 @@ export interface RewardedAdProvider {
 export class AdMobRewardedAd implements RewardedAdProvider {
   private loaded = false;
   private plugin: {
+    initialize(o: unknown): Promise<unknown>;
     prepareRewardVideoAd(o: unknown): Promise<unknown>;
     showRewardVideoAd(): Promise<unknown>;
   } | null = null;
+  private initialised = false;
 
   constructor(
     private adUnitId: string,
     /** Firebase uid, forwarded so the SSV callback can identify the player. */
-    private userId: () => string | null
+    private userId: () => string | null,
+    /** True while pointing at test inventory. */
+    private testMode = true
   ) {}
 
   /** Resolves the native plugin if we are running inside Capacitor. */
@@ -69,6 +73,16 @@ export class AdMobRewardedAd implements RewardedAdProvider {
         AdMob: NonNullable<AdMobRewardedAd['plugin']>;
       };
       this.plugin = mod.AdMob;
+      if (!this.initialised) {
+        // Test devices see test creatives even from a live unit id. This is
+        // the sanctioned way to exercise real placements without generating
+        // the invalid traffic that gets accounts suspended.
+        await this.plugin.initialize({
+          initializeForTesting: this.testMode,
+          testingDevices: [],
+        });
+        this.initialised = true;
+      }
       return true;
     } catch {
       return false;
