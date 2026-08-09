@@ -63,6 +63,15 @@ function blank(): Profile {
 
 export class ProgressStore {
   private data: Profile = blank();
+  /**
+   * True once a backend has answered. From that point the wallet belongs to
+   * the server: the client stops minting coins locally and simply displays
+   * whatever the server last said.
+   *
+   * The flag exists because the game must work identically with no backend
+   * at all, where the client necessarily *is* the authority.
+   */
+  serverAuthoritative = false;
 
   constructor() {
     this.load();
@@ -114,7 +123,10 @@ export class ProgressStore {
     const coinsEarned = Math.floor(score / 100);
 
     this.data.runs += 1;
-    this.data.coins += coinsEarned;
+    // Only mint locally when nobody else will. With a backend live, coins
+    // arrive from submitRun — adding them here too would double-pay, then
+    // get silently reverted on the next sync.
+    if (!this.serverAuthoritative) this.data.coins += coinsEarned;
     if (isBest) this.data.bestScore = score;
     if (level > this.data.bestLevel) this.data.bestLevel = level;
     if (combo > this.data.bestCombo) this.data.bestCombo = combo;
@@ -133,8 +145,13 @@ export class ProgressStore {
     return list.includes(id);
   }
 
-  /** Returns false when the player can't afford it or already owns it. */
+  /**
+   * Local purchase. Only used when there is no backend — with one live the
+   * shop calls `purchaseCosmetic` and applies the server's answer instead,
+   * because a client that debits its own wallet is only ever role-playing.
+   */
   buy(kind: 'ball' | 'paddle', id: string, price: number): boolean {
+    if (this.serverAuthoritative) return false;
     if (this.owns(kind, id)) return false;
     if (this.data.coins < price) return false;
     this.data.coins -= price;
@@ -191,6 +208,7 @@ export class ProgressStore {
    * sync. That switchover happens with run submission.
    */
   applyRemote(remote: {
+    wallet?: { coins: number };
     stats: { bestScore: number; bestLevel: number; bestCombo: number; runs: number };
     inventory: {
       ownedBalls: string[];
@@ -222,6 +240,9 @@ export class ProgressStore {
     this.data.paddle = this.data.ownedPaddles.includes(remote.inventory.equippedPaddle)
       ? remote.inventory.equippedPaddle
       : 'CLASSIC';
+    // The wallet is adopted wholesale once the server owns it. Taking a max
+    // here instead would let a tampered local balance survive forever.
+    if (this.serverAuthoritative && remote.wallet) this.data.coins = remote.wallet.coins;
     this.save();
   }
 }

@@ -1,5 +1,12 @@
 import { initFirebase } from './FirebaseClient';
-import type { BootstrapResult, SyncProfileResult } from './BackendTypes';
+import type {
+  BootstrapResult,
+  PurchaseResult,
+  RunSubmission,
+  RunTicket,
+  SubmitRunResult,
+  SyncProfileResult,
+} from './BackendTypes';
 
 /**
  * Thin wrapper over the callable functions.
@@ -46,5 +53,22 @@ export class BackendApi {
   /** Pushes local progress up, returns the reconciled profile. */
   syncProfile(profile: unknown): Promise<SyncProfileResult | null> {
     return this.call<SyncProfileResult>('syncProfile', { profile }, 8000);
+  }
+
+  /** Short budget: a slow ticket must not delay the serve. */
+  startRun(mode = 'ENDLESS'): Promise<RunTicket | null> {
+    return this.call<RunTicket>('startRun', { mode }, 2500);
+  }
+
+  submitRun(run: RunSubmission, idempotencyKey: string): Promise<SubmitRunResult | null> {
+    return this.call<SubmitRunResult>('submitRun', { ...run, idempotencyKey }, 10000);
+  }
+
+  purchase(kind: 'ball' | 'paddle', id: string, idempotencyKey: string): Promise<PurchaseResult | null> {
+    return this.call<PurchaseResult>('purchaseCosmetic', { kind, id, idempotencyKey }, 10000);
+  }
+
+  equip(kind: 'ball' | 'paddle', id: string): Promise<PurchaseResult | null> {
+    return this.call<PurchaseResult>('equipCosmetic', { kind, id }, 8000);
   }
 }

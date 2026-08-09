@@ -102,6 +102,10 @@ export class Game {
   /** Seconds actually spent in the 'playing' state this level — the CLEAR
    * TIME stat must not count menus, countdowns, pauses, or cinematics. */
   private playSeconds = 0;
+  /** Run-scoped counters for the server's plausibility checks. */
+  private runBricks = 0;
+  private runSeconds = 0;
+  private runContinues = 0;
   private livesLostThisLevel = 0;
   /** A settings/map overlay is open — global keys must not resume play. */
   private overlayOpen = false;
@@ -136,6 +140,18 @@ export class Game {
   /** Intro readouts + the shop entry point, both owned by Experience. */
   getProfileSummary: (() => { best: number; coins: number }) | null = null;
   onOpenShop: ((onBack: () => void) => void) | null = null;
+  /** Server run lifecycle. Both are fire-and-forget; neither may block play. */
+  onRunStart: (() => void) | null = null;
+  onRunSubmit:
+    | ((run: {
+        score: number;
+        levelReached: number;
+        bestCombo: number;
+        bricksDestroyed: number;
+        durationSeconds: number;
+        continuesUsed: number;
+      }) => void)
+    | null = null;
   showRewardedAd: (() => Promise<boolean>) | null = null;
   /** One rewarded continue per run — otherwise a run never really ends. */
   private continueUsed = false;
@@ -403,6 +419,10 @@ export class Game {
     this.screens.showBonuses(() => {
       this.audio.unlock();
       this.audio.click();
+      // The first run of a session starts here, not in restart() — without
+      // this it never got a server ticket and every opening run submitted
+      // as UNVERIFIED.
+      this.beginRun();
       this.startCountdown();
     });
   }
@@ -570,6 +590,7 @@ export class Game {
       this.score = 0;
       this.continueUsed = false; // a new run earns a new continue
       this.runFiled = false;
+      this.beginRun();
     }
     this.onLevelChanged?.(this.levels.level);
     this.rebuildObjects();
@@ -674,6 +695,14 @@ export class Game {
    * intact and one life restored. Granted only if the ad actually completes,
    * and only once per run so a score can still be lost for good.
    */
+  /** Zeroes the run-scoped counters and asks the server for a ticket. */
+  private beginRun(): void {
+    this.runBricks = 0;
+    this.runSeconds = 0;
+    this.runContinues = 0;
+    this.onRunStart?.();
+  }
+
   /**
    * Banks the run exactly once. A run ends by dying or by walking away, and
    * both must pay out — but a game-over screen followed by MAIN MENU must
@@ -682,6 +711,14 @@ export class Game {
   private fileRun(): ReturnType<NonNullable<Game['onRunFinished']>> | null {
     if (this.runFiled || this.score <= 0) return null;
     this.runFiled = true;
+    this.onRunSubmit?.({
+      score: this.score,
+      levelReached: this.levels.level,
+      bestCombo: this.combo.highestCombo,
+      bricksDestroyed: this.runBricks,
+      durationSeconds: Math.round(this.runSeconds),
+      continuesUsed: this.runContinues,
+    });
     return this.onRunFinished?.(this.score, this.levels.level, this.combo.highestCombo) ?? null;
   }
 
@@ -694,6 +731,7 @@ export class Game {
       return;
     }
     this.lives = 1;
+    this.runContinues += 1;
     this.runFiled = false; // the run is live again; it will bank when it ends
     this.hud.setLives(this.lives);
     this.screens.hideAll();
@@ -895,7 +933,10 @@ export class Game {
   update(dt: number): void {
     if (this.state === 'paused') return;
     this.stateTimer += dt;
-    if (this.state === 'playing') this.playSeconds += dt;
+    if (this.state === 'playing') {
+      this.playSeconds += dt;
+      this.runSeconds += dt; // whole-run clock, for the server's time floor
+    }
 
     // Hitstop/slow-mo live in the GameFeelManager; cinematic staging
     // (stateTimer, countdowns) runs in real time.
@@ -1289,6 +1330,7 @@ export class Game {
       this.vfx.paddleImpact(this.impactPos); // small metallic sparks
       return false;
     }
+    this.runBricks += 1;
     this.destroyBrick(brick, result.neighbors, heavy);
     return true;
   }

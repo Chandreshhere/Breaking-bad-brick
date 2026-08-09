@@ -21,7 +21,7 @@ import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
 import { RemoteProgress } from '../backend/RemoteProgress';
-import type { SyncProfileResult } from '../backend/BackendTypes';
+import type { SubmitRunResult, SyncProfileResult } from '../backend/BackendTypes';
 import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
@@ -253,6 +253,16 @@ export class Experience {
       coins: this.progress.profile.coins,
     });
     this.loop.onOpenShop = (onBack): void => this.openShop('ball', onBack);
+
+    // Run lifecycle. Both are deliberately not awaited: a slow ticket must
+    // never delay a serve, and a slow submit must never delay the results.
+    this.loop.onRunStart = (): void => void this.remote.startRun('ENDLESS');
+    this.loop.onRunSubmit = (run): void => {
+      void this.remote.submitRun(run).then((res) => {
+        if (res) this.adoptRunResult(res);
+      });
+    };
+    this.remote.onRemoteRun = (res): void => this.adoptRunResult(res);
     // The intro was painted in Game's constructor, before the hooks above
     // existed — repaint it so it carries the profile readouts and SHOP.
     this.loop.refreshIntro();
@@ -368,11 +378,27 @@ export class Experience {
       // Push this device's progress up and adopt the reconciled result.
       this.remote.onRemoteProfile = (res): void => this.adoptRemoteProfile(res);
       const synced = await this.remote.syncProfile(this.progress.snapshot());
+      // Only now does the server own the wallet — after it has answered once
+      // and folded this device's history in. Flipping earlier would show a
+      // zero balance to a player who had coins a moment ago.
+      this.progress.serverAuthoritative = true;
       if (synced) this.adoptRemoteProfile(synced);
       this.loop.refreshIntro();
     } catch (err) {
       console.warn('[backend] bootstrap threw, staying offline', err);
     }
+  }
+
+  /** Applies a validated run's rewards. The server decides the coins. */
+  private adoptRunResult(res: SubmitRunResult): void {
+    this.progress.applyRemote(res.player);
+    this.applyCosmetics();
+    console.info('[backend] run accepted', {
+      coins: res.coinsAwarded,
+      verification: res.verification,
+      wallet: res.player.wallet.coins,
+    });
+    this.loop.refreshIntro();
   }
 
   /** Folds a server-reconciled profile back into the local store. */
@@ -418,6 +444,10 @@ export class Experience {
       onPick: (id): void => {
         const def = defs.find((d) => d.id === id);
         if (!def) return;
+        if (this.progress.serverAuthoritative) {
+          void this.serverShopAction(tab, id, onBack);
+          return;
+        }
         if (this.progress.owns(tab, id)) {
           this.progress.equip(tab, id);
           this.audio.powerup();
@@ -435,6 +465,37 @@ export class Experience {
         onBack();
       },
     });
+  }
+
+  /**
+   * Buy or equip through the server. The price and the balance both live
+   * there, so the client only names the item and applies the answer.
+   */
+  private async serverShopAction(
+    kind: 'ball' | 'paddle',
+    id: string,
+    onBack: () => void
+  ): Promise<void> {
+    const owned = this.progress.owns(kind, id);
+    const res = owned ? await this.remote.equip(kind, id) : await this.remote.purchase(kind, id);
+    if (!res) {
+      // Offline with a server-owned wallet: refuse rather than pretend.
+      this.audio.wall();
+      this.hud.powerupFlash('OFFLINE — TRY LATER', '#ff8080');
+      return;
+    }
+    if (!res.ok) {
+      this.audio.wall();
+      this.hud.powerupFlash(
+        res.reason === 'INSUFFICIENT_FUNDS' ? 'NOT ENOUGH COINS' : 'UNAVAILABLE',
+        '#ff8080'
+      );
+      return;
+    }
+    this.audio.win();
+    this.progress.applyRemote(res.player);
+    this.applyCosmetics();
+    this.openShop(kind, onBack);
   }
 
   applyEnvironment(): void {

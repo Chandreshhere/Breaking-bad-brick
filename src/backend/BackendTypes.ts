@@ -66,6 +66,37 @@ export interface SyncProfileResult {
   rejectedItems: string[];
 }
 
+export interface RunTicket {
+  runId: string;
+  mode: string;
+  seed: number;
+  expiresAt: number;
+  ticket: string;
+}
+
+export interface RunSubmission {
+  runId: string;
+  score: number;
+  levelReached: number;
+  bestCombo: number;
+  bricksDestroyed: number;
+  durationSeconds: number;
+  continuesUsed: number;
+}
+
+export interface SubmitRunResult {
+  accepted: boolean;
+  verification: 'VERIFIED' | 'UNVERIFIED';
+  coinsAwarded: number;
+  player: RemotePlayer;
+}
+
+export interface PurchaseResult {
+  ok: boolean;
+  reason: string;
+  player: RemotePlayer;
+}
+
 /** Queued mutation shape. Kept small — it is persisted between sessions. */
 export interface OutboxItem {
   id: string;

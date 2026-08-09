@@ -1,8 +1,8 @@
 # Backend — status and setup
 
-Implements **Phases 0–4** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
-Firebase foundation, client abstraction, anonymous auth, bootstrap and
-cloud save.
+Implements **Phases 0–6** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
+Firebase foundation, client abstraction, anonymous auth, bootstrap, cloud
+save, run validation and a server-authoritative economy.
 
 The game runs **exactly as before with no backend configured**. That is the
 designed fallback, not a degraded mode — see "Offline is the default" below.
@@ -16,6 +16,10 @@ functions/                     Cloud Functions (TypeScript, Node 22, 2nd gen)
   src/index.ts                 exports the callables
   src/callable/bootstrap.ts    the single launch call
   src/callable/syncProfile.ts  reconciles a device into the record
+  src/callable/runs.ts         startRun ticket + validated submitRun
+  src/callable/shop.ts         purchaseCosmetic / equipCosmetic
+  src/domain/runs/validate.ts  Tier 1 plausibility + coin award
+  src/domain/economy/          server-held catalogue prices
   src/domain/players/model.ts  authoritative player document
   src/domain/players/merge.ts  the per-field merge rules
   src/security/                auth · idempotency · rateLimit · validation
@@ -41,21 +45,21 @@ firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 | 2 — Client abstraction | Done |
 | 3 — Anonymous auth + bootstrap | Done |
 | 4 — Cloud save + migration | Done |
-| 5 — Server-authoritative economy | Not started |
-| 6 — Run submission + anti-cheat | Not started |
+| 5 — Server-authoritative economy | Done |
+| 6 — Run submission + anti-cheat | Done (Tier 1 + ticket) |
 | 7 — Leaderboards + daily | Not started |
 | 8–12 | Not started |
 
-**The wallet is still client-owned.** Records, inventory and settings now
-reconcile with the server; coins do not. Coins cannot become
-server-authoritative until the server also *grants* them — otherwise every
-sync would reset a locally-earned balance to zero. That switchover happens in
-Phase 6 (run submission), and Phase 5 (purchases) must land with it.
+**The wallet is now server-owned when a backend is configured.** `submitRun`
+is the only thing that mints coins and `purchaseCosmetic` the only thing that
+spends them; the client displays the balance and never sets it. With no
+backend configured the client remains the authority, exactly as before —
+`ProgressStore.serverAuthoritative` selects between the two, and it only
+flips after the server has answered once and folded this device's history in.
 
-Consequence today: a skin bought offline is provisional. The server refuses
-inventory it never granted, and the client adopts the server's answer, so an
-unbacked item disappears on the next sync. With no players and no configured
-backend this is invisible; it is why 5 and 6 ship together.
+Purchases require connectivity. Offline with a server-owned wallet the shop
+refuses and says so, rather than granting an item the server would later take
+back.
 
 ---
 
@@ -101,6 +105,14 @@ document in Firestore under `players/`. Reloading reuses the same uid.
   `inventory_claim_rejected` logged on both sides
 - The client adopts the server's inventory rather than re-merging its own,
   so a refused item does not survive locally
+- A run submits `VERIFIED` with a ticket, `UNVERIFIED` without one (offline
+  start), and awards score/100 coins — computed server-side
+- Forged runs rejected: `SCORE_EXCEEDS_CEILING`, `COMBO_EXCEEDS_BRICKS`,
+  `DURATION_TOO_SHORT`; unauthenticated calls `401`
+- Replaying an accepted run pays once (36 coins, not 72)
+- A local wallet forged to 500,000 is replaced by the server's balance
+- Buying EMBER while claiming `price: 1` charges the real 150 (600 → 450)
+- Equipping an unowned item is refused
 - Production build with a `demo-*` config makes **no** network requests
 - No console errors; no Firebase requests at all when unconfigured
 
@@ -174,15 +186,23 @@ for native crashes; the web bundle needs a browser SDK.
 
 ---
 
-## Next: Phases 5 + 6, together
+## Anti-cheat, honestly
 
-They have to ship as one change, because the wallet is only coherent when the
-server both grants and spends coins:
+Tier 1 (plausibility) and the run ticket are in. Together they mean a forged
+score has to be internally consistent — score, bricks, level and duration all
+agreeing — rather than just large, and it has to be claimed against a ticket
+the server issued and has not seen before.
 
-- **6 — run submission** moves *earning* server-side (`startRun` issues a
-  signed ticket, `submitRun` validates plausibility and awards the coins).
-- **5 — economy** moves *spending* server-side (`purchaseCosmetic` reads the
-  price from the catalogue, never from the client).
+This does not *prove* a run happened. The simulation is on the client, so it
+cannot. Tier 3 (deterministic replay) is the only thing that would, and it is
+blocked on the RNG refactor in PRODUCTION_SPEC Appendix C.
 
-Only once both exist should `applyRemote` adopt the server's coin balance and
-`ProgressStore.finishRun`/`buy` stop touching coins locally.
+Bounds are deliberately generous: a false reject costs a real player their
+run and their coins, a false accept costs a leaderboard slot. Ties go to the
+player.
+
+## Next: Phase 7 — leaderboards + daily
+
+Runs are now validated and recorded, which is the prerequisite. Only
+`VERIFIED` runs should reach competitive boards; `UNVERIFIED` ones (started
+offline) belong on a separate board or none.

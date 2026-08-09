@@ -5,7 +5,10 @@ import { Outbox } from './Outbox';
 import type {
   BootstrapResult,
   OutboxItem,
+  PurchaseResult,
   RemoteProgressApi,
+  RunSubmission,
+  SubmitRunResult,
   SyncProfileResult,
 } from './BackendTypes';
 
@@ -77,6 +80,48 @@ export class RemoteProgress implements RemoteProgressApi {
     return res;
   }
 
+  /** Current run's server ticket, if one was issued. */
+  private ticket: string | null = null;
+
+  /**
+   * Asks for a run ticket. Failure is fine and expected offline — the run
+   * proceeds either way and simply submits as UNVERIFIED, because refusing
+   * to let someone play in a tunnel is a worse outcome than an unranked
+   * score.
+   */
+  async startRun(mode = 'ENDLESS'): Promise<string | null> {
+    this.ticket = null;
+    if (!this.online) return null;
+    const t = await this.api.startRun(mode);
+    this.ticket = t?.runId ?? null;
+    return this.ticket;
+  }
+
+  /** Submits a finished run, queueing it when offline. */
+  async submitRun(run: Omit<RunSubmission, 'runId'>): Promise<SubmitRunResult | null> {
+    if (!this.enabled) return null;
+    const runId = this.ticket ?? `offline_${crypto.randomUUID()}`;
+    this.ticket = null;
+    const payload: RunSubmission = { ...run, runId };
+    if (!this.online) {
+      this.enqueue('submitRun', payload);
+      return null;
+    }
+    const res = await this.api.submitRun(payload, runId);
+    if (!res) this.enqueue('submitRun', payload);
+    return res;
+  }
+
+  purchase(kind: 'ball' | 'paddle', id: string): Promise<PurchaseResult | null> {
+    if (!this.online) return Promise.resolve(null);
+    return this.api.purchase(kind, id, `buy_${kind}_${id}`);
+  }
+
+  equip(kind: 'ball' | 'paddle', id: string): Promise<PurchaseResult | null> {
+    if (!this.online) return Promise.resolve(null);
+    return this.api.equip(kind, id);
+  }
+
   /** Queues a mutation. Safe offline; flushed opportunistically. */
   enqueue(op: OutboxItem['op'], payload: unknown): void {
     if (!this.enabled) return;
@@ -105,11 +150,21 @@ export class RemoteProgress implements RemoteProgressApi {
         // Only the ops whose endpoints exist are drained; anything else
         // waits rather than being dropped, so a queue written by a newer
         // client is never destroyed by an older one.
-        if (item.op !== 'syncProfile') continue;
-        const res = await this.api.syncProfile(item.payload);
-        if (res) {
-          await this.outbox.remove(item.id);
-          this.onRemoteProfile?.(res);
+        if (item.op === 'syncProfile') {
+          const res = await this.api.syncProfile(item.payload);
+          if (res) {
+            await this.outbox.remove(item.id);
+            this.onRemoteProfile?.(res);
+          }
+        } else if (item.op === 'submitRun') {
+          const run = item.payload as RunSubmission;
+          const res = await this.api.submitRun(run, run.runId);
+          // A rejected run is removed too: retrying a submission the server
+          // has already judged invalid would loop forever.
+          if (res !== null) {
+            await this.outbox.remove(item.id);
+            this.onRemoteRun?.(res);
+          }
         }
       }
     } finally {
@@ -119,4 +174,5 @@ export class RemoteProgress implements RemoteProgressApi {
 
   /** Set by Experience so a flushed sync still reaches ProgressStore. */
   onRemoteProfile: ((res: SyncProfileResult) => void) | null = null;
+  onRemoteRun: ((res: SubmitRunResult) => void) | null = null;
 }
