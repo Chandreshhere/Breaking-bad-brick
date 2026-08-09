@@ -48,14 +48,14 @@ to **58°**, and your own momentum transfers into it. Score is
 
 **Ace Breaker** is a browser game built entirely in code — no Blender, no
 GLTF/GLB, no downloaded textures, no audio files. The stadium, bricks, rain,
-lightning, sound effects and the 140 BPM soundtrack are all generated at runtime.
+lightning, sound effects and all six soundtracks are all generated at runtime.
 
 | | |
 |:--|:--|
 | 🧱 **8 brick types** | Normal · Armored (3 HP) · Explosive (chains) · Moving · Ghost (intangible while faded) · Multiplier (×3) · Powerup · Boss (24 HP) |
 | 💊 **6 power-ups** | 22% drop rate — Racket XL · Multiball · Heavy Ball · Defensive Wall · Smash · Power Shot |
 | 🔥 **Combo ladder** | `5→HOT ×2` · `12→ON FIRE ×3` · `25→BLAZING ×4` · `40→OVERDRIVE ×5`. Drives VFX and music, never ball speed. |
-| 🌍 **6 worlds** | Rotates every 3 levels — or lock one from the ARENA picker. |
+| 🌍 **6 worlds** | Rotates every 3 levels — each with its own soundtrack. Or lock one from the ARENA picker. |
 | 👑 **Boss levels** | Every 4th level: 24 HP core, guard ring, telegraphed laser. |
 | ♾ **Endless levels** | Seeded and deterministic from 11 formation templates. |
 
@@ -139,7 +139,7 @@ src/
 │                             # FormationGenerator, Bricks, Ball, Paddle, Combo…
 ├── effects/                  # GameFeel (owns every impulse), Vfx, Rain, Lightning,
 │                             # Particles, CameraShake, PostProcessing
-├── audio/                    # AudioFx (SFX), Music (adaptive 140 BPM loop)
+├── audio/                    # AudioFx (SFX), Music + tracks (one per world)
 └── ui/                       # Screens (menus), Hud
 ```
 

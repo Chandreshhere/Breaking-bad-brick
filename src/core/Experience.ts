@@ -203,6 +203,8 @@ export class Experience {
       this.weatherBase = weather.intensity;
       this.weather.setMode(weather.mode, weather.intensity);
       this.vfx.comicMode = this.cfg.worldKind === 'COMIC';
+      // Each world has its own track; the engine swaps it on the next bar.
+      this.music.setBiome(biome);
     };
     this.loop.onLevelChanged = applyLevelEnvironment;
 

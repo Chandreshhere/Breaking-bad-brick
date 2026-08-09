@@ -1,8 +1,11 @@
+import type { BiomeName } from '../environment/EnvironmentDirector';
 import type { AudioFx } from './AudioFx';
+import { DEFAULT_TRACK, TRACKS, type MusicTrack } from './tracks';
 
 /**
- * Adaptive music engine — fully synthesized (no audio files), trap-flavoured
- * at 140 BPM. Conceptual stems, each with its own gain bus:
+ * Adaptive music engine — fully synthesized, no audio files. Each world has
+ * its own track (tempo, key, patterns, timbres) in `tracks.ts`; this engine
+ * renders whichever one is active. Conceptual stems, each with its own bus:
  *
  *   AMBIENCE  sustained detuned pad             (always on, quiet)
  *   DRUMS     kick + snare pattern              intensity > ~0.2
@@ -17,15 +20,9 @@ import type { AudioFx } from './AudioFx';
  * life-lost duck/low-pass and mute apply to music automatically.
  */
 
-const BPM = 140;
 const STEPS_PER_BAR = 16;
-const STEP_SECONDS = 60 / BPM / 4;
 const LOOKAHEAD_SECONDS = 0.2;
 const TICK_MS = 90;
-
-// D minor world. Frequencies in Hz.
-const SUB_NOTES = [36.71, 36.71, 43.65, 32.7]; // D1 D1 F1 C1 per bar
-const PLUCK_SCALE = [293.66, 349.23, 392.0, 440.0, 523.25]; // D4 F4 G4 A4 C5
 
 interface StemLevels {
   ambience: number;
@@ -53,8 +50,56 @@ export class MusicEngine {
   private timer: number | null = null;
   private rngState = 1234;
   private volume = 0.7;
+  private track: MusicTrack = DEFAULT_TRACK;
+  /** Queued track change — applied on a bar line so it never lands mid-phrase. */
+  private pendingTrack: MusicTrack | null = null;
 
   constructor(private audio: AudioFx) {}
+
+  private get stepSeconds(): number {
+    return 60 / this.track.bpm / 4;
+  }
+
+  /**
+   * Switches the world's track. The swap waits for the next bar so the
+   * change lands on a downbeat rather than cutting a phrase in half.
+   */
+  setBiome(biome: BiomeName): void {
+    const next = TRACKS[biome] ?? DEFAULT_TRACK;
+    if (next === this.track || next === this.pendingTrack) return;
+    if (!this.ctx) {
+      this.track = next; // not started yet — adopt it directly
+      return;
+    }
+    this.pendingTrack = next;
+  }
+
+  /** Rebuilds the sustained pad for the current track. */
+  private buildPad(): void {
+    if (!this.ctx || !this.stems) return;
+    const now = this.ctx.currentTime;
+    for (const osc of this.padNodes) {
+      try {
+        osc.stop(now + 0.35);
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.padNodes = [];
+    for (const freq of this.track.padChord) {
+      const osc = this.ctx.createOscillator();
+      osc.type = this.track.padType;
+      osc.frequency.value = freq;
+      osc.detune.value = (this.rand() - 0.5) * 12;
+      const g = this.ctx.createGain();
+      // Fade in across the crossfade so the two pads overlap instead of clicking.
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(this.track.padGain, now + 0.35);
+      osc.connect(g).connect(this.stems.ambience);
+      osc.start(now);
+      this.padNodes.push(osc);
+    }
+  }
 
   setVolume(volume: number): void {
     this.volume = Math.min(1, Math.max(0, volume));
@@ -93,18 +138,8 @@ export class MusicEngine {
       overdrive: makeStem(),
     };
 
-    // AMBIENCE pad: three detuned triangles, D minor colour, always running.
-    for (const freq of [146.83, 174.61, 220.0]) {
-      const osc = ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      osc.detune.value = (this.rand() - 0.5) * 12;
-      const g = ctx.createGain();
-      g.gain.value = 0.035;
-      osc.connect(g).connect(this.stems.ambience);
-      osc.start();
-      this.padNodes.push(osc);
-    }
+    // AMBIENCE pad: the current track's chord, always running.
+    this.buildPad();
 
     this.nextStepTime = ctx.currentTime + 0.1;
     this.step = 0;
@@ -145,7 +180,7 @@ export class MusicEngine {
     // grid silently instead of bursting every missed note at once.
     if (this.nextStepTime < this.ctx.currentTime - 0.05) {
       while (this.nextStepTime < this.ctx.currentTime) {
-        this.nextStepTime += STEP_SECONDS;
+        this.nextStepTime += this.stepSeconds;
         this.step += 1;
         if (this.step >= STEPS_PER_BAR) {
           this.step = 0;
@@ -156,11 +191,17 @@ export class MusicEngine {
     }
     while (this.nextStepTime < this.ctx.currentTime + LOOKAHEAD_SECONDS) {
       this.scheduleStep(this.step, this.nextStepTime);
-      this.nextStepTime += STEP_SECONDS;
+      this.nextStepTime += this.stepSeconds;
       this.step += 1;
       if (this.step >= STEPS_PER_BAR) {
         this.step = 0;
         this.bar += 1;
+        // Bar line: the only place the world's track may change.
+        if (this.pendingTrack) {
+          this.track = this.pendingTrack;
+          this.pendingTrack = null;
+          this.buildPad();
+        }
         this.applyStemLevels(this.nextStepTime);
       }
     }
@@ -178,42 +219,66 @@ export class MusicEngine {
     }
   }
 
-  private scheduleStep(step: number, t: number): void {
+  private scheduleStep(step: number, rawTime: number): void {
     if (!this.ctx || !this.stems) return;
+    const tr = this.track;
+    const stepSecs = this.stepSeconds;
+    // Swing pushes the odd 16ths late — the difference between the funk
+    // world's shuffle and the arcade world's rigid grid.
+    const t = step % 2 === 1 ? rawTime + stepSecs * tr.swing : rawTime;
 
-    // DRUMS — trap kick pattern + snare backbeat.
-    if (step === 0 || step === 6 || step === 10) this.kick(t);
-    if (step === 8) this.snare(t, 0.5);
+    if (tr.kickSteps.includes(step)) this.kick(t);
+    if (tr.snareSteps.includes(step)) this.snare(t, 0.5);
     if (step === 14 && this.intensity > 0.6 && this.rand() < 0.4) this.snare(t, 0.22);
 
-    // BASS_808 — glides under the kick, progression cycles per bar.
-    if (step === 0 || step === 6 || step === 10) {
-      const root = SUB_NOTES[this.bar % SUB_NOTES.length];
+    // BASS — follows the kick; the progression cycles per bar.
+    if (tr.kickSteps.includes(step)) {
+      const root = tr.subNotes[this.bar % tr.subNotes.length];
       this.sub808(t, root, step === 0 ? 0.5 : 0.32);
     }
 
-    // HIHATS — 8ths, upgraded to 16ths with rolls as intensity climbs.
+    this.scheduleHats(step, t, stepSecs);
+
+    if (tr.melodySteps.includes(step) && this.rand() < tr.melodyChance) {
+      const note = tr.pluckScale[Math.floor(this.rand() * tr.pluckScale.length)];
+      this.pluck(t, note);
+    }
+
+    if (tr.stabSteps.includes(step)) {
+      const root = tr.subNotes[this.bar % tr.subNotes.length];
+      this.stab(t, root * 4);
+    }
+  }
+
+  /** Hat pattern per track — each world keeps time differently. */
+  private scheduleHats(step: number, t: number, stepSecs: number): void {
+    const tr = this.track;
+    if (tr.hatMode === 'none') return;
+
+    if (tr.hatMode === 'offbeat') {
+      // Only the "and" of each beat — the synthwave/funk pulse.
+      if (step % 4 === 2) this.hat(t, 0.2 * (0.8 + this.rand() * 0.4));
+      return;
+    }
+    if (tr.hatMode === 'four') {
+      if (step % 4 === 0) this.hat(t, 0.22);
+      return;
+    }
+    if (tr.hatMode === 'shaker') {
+      // Continuous quiet 16ths — texture rather than a beat.
+      this.hat(t, 0.05 + this.rand() * 0.03);
+      return;
+    }
+
+    // 'trap': 8ths that become 16ths with rolls as intensity climbs.
     const sixteenths = this.intensity > 0.75;
     if (step % 2 === 0 || sixteenths) {
       const accent = step % 4 === 0 ? 0.24 : 0.13;
       this.hat(t, accent * (0.8 + this.rand() * 0.4));
       if (sixteenths && step === 12 && this.rand() < 0.5) {
-        // little roll
-        this.hat(t + STEP_SECONDS * 0.33, 0.1);
-        this.hat(t + STEP_SECONDS * 0.66, 0.1);
+        this.hat(t + stepSecs * 0.33, 0.1);
+        this.hat(t + stepSecs * 0.66, 0.1);
       }
-    }
-
-    // MELODY — sparse pluck arp.
-    if ((step === 2 || step === 7 || step === 12) && this.rand() < 0.75) {
-      const note = PLUCK_SCALE[Math.floor(this.rand() * PLUCK_SCALE.length)];
-      this.pluck(t, note);
-    }
-
-    // OVERDRIVE layer — saw stabs on the 1 and the 3.
-    if (step === 0 || step === 8) {
-      const root = SUB_NOTES[this.bar % SUB_NOTES.length];
-      this.stab(t, root * 4);
     }
   }
 
@@ -223,14 +288,15 @@ export class MusicEngine {
     if (!this.ctx || !this.stems) return;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
+    const tr = this.track;
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, t);
-    osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
+    osc.frequency.setValueAtTime(tr.kickFrom, t);
+    osc.frequency.exponentialRampToValueAtTime(tr.kickTo, t + tr.kickDecay * 0.4);
     g.gain.setValueAtTime(0.85, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    g.gain.exponentialRampToValueAtTime(0.001, t + tr.kickDecay);
     osc.connect(g).connect(this.stems.drums);
     osc.start(t);
-    osc.stop(t + 0.25);
+    osc.stop(t + tr.kickDecay + 0.03);
   }
 
   private snare(t: number, gain: number): void {
@@ -243,7 +309,7 @@ export class MusicEngine {
     src.buffer = buffer;
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 1800;
+    filter.frequency.value = this.track.snareBand;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
@@ -251,7 +317,7 @@ export class MusicEngine {
     src.start(t);
     const tone = this.ctx.createOscillator();
     tone.type = 'triangle';
-    tone.frequency.value = 190;
+    tone.frequency.value = this.track.snareTone;
     const tg = this.ctx.createGain();
     tg.gain.setValueAtTime(gain * 0.5, t);
     tg.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
@@ -264,14 +330,19 @@ export class MusicEngine {
     if (!this.ctx || !this.stems) return;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq * 1.5, t);
-    osc.frequency.exponentialRampToValueAtTime(freq, t + 0.06); // glide down
+    const tr = this.track;
+    osc.type = tr.bassType;
+    if (tr.bassGlide) {
+      osc.frequency.setValueAtTime(freq * 1.5, t);
+      osc.frequency.exponentialRampToValueAtTime(freq, t + 0.06); // 808 dive
+    } else {
+      osc.frequency.setValueAtTime(freq, t);
+    }
     g.gain.setValueAtTime(gain, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.001, t + tr.bassDecay);
     osc.connect(g).connect(this.stems.bass);
     osc.start(t);
-    osc.stop(t + 0.45);
+    osc.stop(t + tr.bassDecay + 0.05);
   }
 
   private hat(t: number, gain: number): void {
@@ -284,7 +355,7 @@ export class MusicEngine {
     src.buffer = buffer;
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.value = 7000;
+    filter.frequency.value = this.track.hatHighpass;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
@@ -296,13 +367,14 @@ export class MusicEngine {
     if (!this.ctx || !this.stems) return;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
-    osc.type = 'triangle';
+    const tr = this.track;
+    osc.type = tr.pluckType;
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0.16, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    g.gain.exponentialRampToValueAtTime(0.001, t + tr.pluckDecay);
     osc.connect(g).connect(this.stems.melody);
     osc.start(t);
-    osc.stop(t + 0.3);
+    osc.stop(t + tr.pluckDecay + 0.03);
   }
 
   private stab(t: number, freq: number): void {
@@ -310,10 +382,10 @@ export class MusicEngine {
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const g = this.ctx.createGain();
-    osc.type = 'sawtooth';
+    osc.type = this.track.stabType;
     osc.frequency.value = freq;
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(2400, t);
+    filter.frequency.setValueAtTime(this.track.stabCutoff, t);
     filter.frequency.exponentialRampToValueAtTime(400, t + 0.2);
     g.gain.setValueAtTime(0.14, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
