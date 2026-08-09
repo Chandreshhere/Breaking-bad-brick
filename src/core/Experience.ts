@@ -20,6 +20,7 @@ import { Game } from '../game/Game';
 import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
+import { RemoteProgress } from '../backend/RemoteProgress';
 import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
@@ -71,6 +72,11 @@ export class Experience {
   readonly powerups: PowerupManager;
   readonly boss = new BossCharacter();
   readonly progress = new ProgressStore();
+  /**
+   * Cloud mirror of the profile. Disabled and inert without a Firebase
+   * config, so the game is identical offline — see src/backend/.
+   */
+  readonly remote = new RemoteProgress();
   /**
    * Swap this for a real network (AdMob via Capacitor on the stores, an
    * HTML5 ad SDK on web) and nothing else changes. See src/game/Ads.ts.
@@ -249,6 +255,10 @@ export class Experience {
     // The intro was painted in Game's constructor, before the hooks above
     // existed — repaint it so it carries the profile readouts and SHOP.
     this.loop.refreshIntro();
+
+    // Fire and forget: identity + launch payload. Deliberately not awaited —
+    // the game must reach the intro screen whether or not this resolves.
+    void this.startBackend();
     this.loop.showRewardedAd = async (): Promise<boolean> =>
       (await this.ads.show()) === 'completed';
     this.loop.onBossStrike = (): void => this.boss.strike();
@@ -337,6 +347,28 @@ export class Experience {
     window.visualViewport?.addEventListener('resize', this.onViewportChange);
     window.addEventListener('keydown', this.onKeyDown);
     this.renderer.setAnimationLoop(this.tick);
+  }
+
+  /**
+   * Signs in anonymously and pulls the launch payload. Every failure path
+   * ends in "carry on with local data"; nothing here may block startup.
+   */
+  private async startBackend(): Promise<void> {
+    if (!this.remote.enabled) return;
+    try {
+      const boot = await this.remote.bootstrap();
+      if (!boot) return;
+      // Phase 4 reconciles the profile. For now the arrival is only logged,
+      // so a live backend cannot yet move a player's local progress.
+      console.info('[backend] bootstrap ok', {
+        uid: boot.player.uid,
+        serverBest: boot.player.stats.bestScore,
+        localBest: this.progress.profile.bestScore,
+      });
+      this.loop.refreshIntro();
+    } catch (err) {
+      console.warn('[backend] bootstrap threw, staying offline', err);
+    }
   }
 
   /** Re-applies the equipped ball/paddle skins to the live objects. */

@@ -1,0 +1,45 @@
+import { initFirebase } from './FirebaseClient';
+import type { BootstrapResult } from './BackendTypes';
+
+/**
+ * Thin wrapper over the callable functions.
+ *
+ * Callables carry the Firebase auth token and App Check attestation
+ * automatically, so there is no hand-rolled auth header anywhere in the
+ * client. Every method resolves to null on failure rather than throwing —
+ * a backend problem must never surface as an unhandled rejection mid-game.
+ */
+export class BackendApi {
+  /** Rejects if the call takes longer than the caller's patience allows. */
+  private async withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+    let timer: number | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = window.setTimeout(() => resolve(null), ms);
+    });
+    try {
+      return await Promise.race([p, timeout]);
+    } finally {
+      if (timer !== undefined) window.clearTimeout(timer);
+    }
+  }
+
+  private async call<T>(name: string, payload: unknown, timeoutMs: number): Promise<T | null> {
+    const fb = await initFirebase();
+    if (!fb) return null;
+    try {
+      const { httpsCallable } = await import('firebase/functions');
+      const fn = httpsCallable(fb.functions, name);
+      const res = await this.withTimeout(fn(payload), timeoutMs);
+      if (!res) return null;
+      return res.data as T;
+    } catch (err) {
+      console.warn(`[backend] ${name} failed`, err);
+      return null;
+    }
+  }
+
+  /** One launch call. 3s budget — after that the game starts offline. */
+  bootstrap(): Promise<BootstrapResult | null> {
+    return this.call<BootstrapResult>('bootstrap', {}, 3000);
+  }
+}

@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Default deny. The client never writes authoritative state — every mutation
+// goes through a Cloud Function using the Admin SDK, which bypasses these
+// rules entirely. Anything a client CAN write here would be forgeable, so the
+// answer is almost always "no writes".
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The player's own profile. Readable by its owner so the client can show
+    // wallet/inventory without a round trip; never writable — coins,
+    // inventory and entitlements are server-authoritative.
+    match /players/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+
+      // Mission progress is derived from validated runs, server-side.
+      match /missions/{missionId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+
+    // Run records are the evidence behind leaderboard entries. Owners may
+    // read their own history; nobody writes directly.
+    match /runs/{runId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Leaderboards are world-readable so they can render for signed-in
+    // players, and are written only by the submit-run function.
+    match /leaderboards/{board}/entries/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Server-authored content the client only ever reads.
+    match /dailies/{date}      { allow read: if signedIn(); allow write: if false; }
+    match /missions/{missionId} { allow read: if signedIn(); allow write: if false; }
+    match /catalogue/{doc}      { allow read: if signedIn(); allow write: if false; }
+
+    // Internal bookkeeping — never client-visible.
+    match /idempotency/{uid}/keys/{key} { allow read, write: if false; }
+    match /runTickets/{runId}           { allow read, write: if false; }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

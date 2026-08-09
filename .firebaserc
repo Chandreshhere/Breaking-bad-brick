@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "bbb-dev",
+    "dev": "bbb-dev",
+    "staging": "bbb-staging",
+    "prod": "bbb-prod"
+  }
+}

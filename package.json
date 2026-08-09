@@ -7,9 +7,16 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "emulators": "firebase emulators:start --project demo-bbb --only auth,firestore,functions",
+    "dev:emulator": "VITE_FIREBASE_EMULATOR=1 vite",
+    "functions:build": "npm --prefix functions run build",
+    "functions:typecheck": "npm --prefix functions run typecheck",
+    "deploy:functions:dev": "npm --prefix functions run build && firebase deploy --only functions -P dev",
+    "deploy:rules:dev": "firebase deploy --only firestore:rules,firestore:indexes -P dev"
   },
   "dependencies": {
+    "firebase": "^12.17.1",
     "lil-gui": "^0.20.0",
     "three": "^0.180.0"
   },
