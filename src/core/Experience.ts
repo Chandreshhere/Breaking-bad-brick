@@ -246,6 +246,9 @@ export class Experience {
       coins: this.progress.profile.coins,
     });
     this.loop.onOpenShop = (onBack): void => this.openShop('ball', onBack);
+    // The intro was painted in Game's constructor, before the hooks above
+    // existed — repaint it so it carries the profile readouts and SHOP.
+    this.loop.refreshIntro();
     this.loop.showRewardedAd = async (): Promise<boolean> =>
       (await this.ads.show()) === 'completed';
     this.loop.onBossStrike = (): void => this.boss.strike();

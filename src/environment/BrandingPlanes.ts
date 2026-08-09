@@ -16,7 +16,15 @@ export function createWordmarkTexture(text: string, color: string): THREE.Canvas
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0.25em';
-    ctx.font = 'italic 600 170px Georgia, "Times New Roman", serif';
+    // Shrink to fit rather than overflow: a longer wordmark used to run off
+    // the end of the plane and read as truncated text on the wall.
+    let size = 170;
+    ctx.font = `italic 600 ${size}px Georgia, "Times New Roman", serif`;
+    const maxWidth = canvas.width * 0.92;
+    while (ctx.measureText(text).width > maxWidth && size > 40) {
+      size -= 6;
+      ctx.font = `italic 600 ${size}px Georgia, "Times New Roman", serif`;
+    }
     ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 10);
   }
   const texture = new THREE.CanvasTexture(canvas);

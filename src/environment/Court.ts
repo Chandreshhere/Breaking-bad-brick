@@ -15,10 +15,12 @@ export function buildCourt(cfg: VisualConfig): THREE.Group {
   slab.receiveShadow = true;
   group.add(slab);
 
-  // Everything outside the slab reads near-black so the arena edges vanish.
+  // The surround used to be near-black, which vanishes in landscape but
+  // reads as a hole along the bottom of a portrait screen. It now takes the
+  // world's own dark wall colour, so it reads as arena floor.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(400, 400),
-    new THREE.MeshStandardMaterial({ color: '#050f08', roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: cfg.rear.backWallColor, roughness: 1 })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.16;

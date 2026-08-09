@@ -182,6 +182,15 @@ export class Game {
     }
   }
 
+  /**
+   * Re-renders the intro. The constructor shows it before Experience has
+   * wired the profile and shop hooks, so the first paint would otherwise be
+   * missing the BEST readout, the coin count and the SHOP button.
+   */
+  refreshIntro(): void {
+    if (this.state === 'intro' && !this.silent) this.enterIntro();
+  }
+
   /** 0..1 red-arena factor for the heavy-ball state; Experience applies it. */
   get heavyTint(): number {
     return this.heavyT;
@@ -673,8 +682,10 @@ export class Game {
     this.hud.setLives(this.lives);
     this.screens.hideAll();
     this.fastCountdown = true;
-    this.rebuildObjects();
-    this.handleRebuild();
+    // Deliberately NOT a rebuild: continuing resumes the level exactly where
+    // it was lost, bricks and all. Rebuilding would hand back a full field,
+    // which is a reward for dying rather than a second chance. `serve()`
+    // restores the ball on its own.
     this.hud.powerupFlash('BACK IN', '#7dff6a');
     this.startCountdown();
   }

@@ -59,7 +59,7 @@ const CSS = /* css */ `
 .acb-best b { color: #efd42e; font-size: 1.35em; letter-spacing: 0.08em; }
 
 /* Coin readout + shop grid */
-.acb-coins { position: absolute; top: 22px; right: 26px; font-size: clamp(13px, 2.4vw, 18px);
+.acb-coins { position: absolute; top: 24px; right: 84px; font-size: clamp(13px, 2.4vw, 18px);
   font-weight: 700; letter-spacing: 0.12em; color: #efd42e; display: flex; align-items: center; gap: 8px; }
 .acb-shop-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 16px; padding: 13vh 5% 4vh; box-sizing: border-box; }
@@ -253,11 +253,11 @@ export class Screens {
     const el = document.createElement('div');
     el.className = 'acb-screen';
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <button class="acb-gear" data-action="settings" title="Settings">⚙</button>
       <div class="acb-title-block">
         <div class="acb-title-serif">${arena && arena.label !== 'AUTO CYCLE' ? arena.label : 'CLAY COURT'}</div>
-        <div class="acb-title-main">ACE BREAKER</div>
+        <div class="acb-title-main">BREAKING BAD BRICK</div>
       </div>
       <div class="acb-divider"></div>
       ${
@@ -308,7 +308,7 @@ export class Screens {
       </button>`
     ).join('');
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-maps-wrap">
         <h2>SELECT ARENA</h2>
         <div class="acb-maps">${cards}</div>
@@ -346,7 +346,7 @@ export class Screens {
     el.className = 'acb-screen';
     const v = opts.values;
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-settings">
         <h2>SETTINGS</h2>
         <div class="acb-set-row"><span>MUSIC</span>
@@ -393,7 +393,7 @@ export class Screens {
     const el = document.createElement('div');
     el.className = 'acb-screen acb-bonus-screen';
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-bonus-head">6 BONUSES<br /><em>TO BOOST YOUR GAME</em></div>
       <div class="acb-bonus-row">${items}</div>
       <div class="acb-bonus-cta">
@@ -429,7 +429,7 @@ export class Screens {
       )
       .join('');
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-center">
         <div class="acb-results-title">${title}</div>
         <div class="acb-results-sub">SCORE</div>
@@ -513,7 +513,7 @@ export class Screens {
       })
       .join('');
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-coins">${COIN_SVG}${opts.coins}</div>
       <div class="acb-shop-wrap">
         <h2 style="margin:0;letter-spacing:0.2em;font-size:clamp(18px,4vw,26px)">SHOP</h2>
@@ -538,7 +538,7 @@ export class Screens {
     const el = document.createElement('div');
     el.className = 'acb-screen acb-pause';
     el.innerHTML = `
-      <div class="acb-wordmark">ACE BREAKER</div>
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
       ${onSettings ? '<button class="acb-gear" data-action="settings" title="Settings">⚙</button>' : ''}
       <div class="acb-center">
         <div class="acb-results-title">PAUSED</div>

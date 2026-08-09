@@ -3,6 +3,7 @@ import type { VisualConfig } from '../config/visual.config';
 import { buildBrandingPlanes } from './BrandingPlanes';
 import { buildCourt } from './Court';
 import { buildCourtLines } from './CourtLines';
+import { buildNearStructure } from './NearStructure';
 import { buildLightRails } from './LightRails';
 import { disposeSubtree } from './materials';
 import { buildRearStructure } from './RearStructure';
@@ -35,7 +36,10 @@ export class Stadium {
       buildCourt(this.cfg),
       buildCourtLines(this.cfg),
       buildSideWalls(this.cfg),
-      buildLightRails(this.cfg)
+      buildLightRails(this.cfg),
+      // Every world gets the near-end stands: without them the bottom of a
+      // portrait screen is a dead black band.
+      buildNearStructure(this.cfg)
     );
     switch (this.cfg.worldKind) {
       case 'LOTUS':

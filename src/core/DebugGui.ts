@@ -7,7 +7,7 @@ import type { Experience } from './Experience';
  * apply live; structural values rebuild the stadium on release.
  */
 export function createDebugGui(exp: Experience): GUI {
-  const gui = new GUI({ title: 'Ace Breaker — Stadium' });
+  const gui = new GUI({ title: 'Breaking Bad Brick — Stadium' });
   const cfg = exp.cfg;
   const rebuild = (): void => exp.rebuildStadium();
 

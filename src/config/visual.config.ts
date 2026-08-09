@@ -333,7 +333,7 @@ export const VISUAL_CONFIG = {
   },
 
   branding: {
-    text: 'ACE BREAKER',
+    text: 'BREAKING BAD BRICK',
     color: '#e6d6a3',
   },
 };
