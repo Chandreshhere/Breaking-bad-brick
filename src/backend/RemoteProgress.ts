@@ -2,7 +2,12 @@ import { AuthService } from './AuthService';
 import { BackendApi } from './BackendApi';
 import { backendConfigured } from './FirebaseClient';
 import { Outbox } from './Outbox';
-import type { BootstrapResult, OutboxItem, RemoteProgressApi } from './BackendTypes';
+import type {
+  BootstrapResult,
+  OutboxItem,
+  RemoteProgressApi,
+  SyncProfileResult,
+} from './BackendTypes';
 
 /**
  * The single seam between the game and the backend.
@@ -57,6 +62,21 @@ export class RemoteProgress implements RemoteProgressApi {
     return this.booted;
   }
 
+  /**
+   * Pushes a local profile snapshot up and returns the reconciled profile.
+   * Queues for later when offline rather than losing the attempt.
+   */
+  async syncProfile(snapshot: unknown): Promise<SyncProfileResult | null> {
+    if (!this.enabled) return null;
+    if (!this.online) {
+      this.enqueue('syncProfile', snapshot);
+      return null;
+    }
+    const res = await this.api.syncProfile(snapshot);
+    if (!res) this.enqueue('syncProfile', snapshot);
+    return res;
+  }
+
   /** Queues a mutation. Safe offline; flushed opportunistically. */
   enqueue(op: OutboxItem['op'], payload: unknown): void {
     if (!this.enabled) return;
@@ -81,11 +101,22 @@ export class RemoteProgress implements RemoteProgressApi {
     this.flushing = true;
     try {
       const items = await this.outbox.all();
-      if (items.length > 0) {
-        console.info(`[backend] ${items.length} queued op(s) awaiting their endpoints.`);
+      for (const item of items) {
+        // Only the ops whose endpoints exist are drained; anything else
+        // waits rather than being dropped, so a queue written by a newer
+        // client is never destroyed by an older one.
+        if (item.op !== 'syncProfile') continue;
+        const res = await this.api.syncProfile(item.payload);
+        if (res) {
+          await this.outbox.remove(item.id);
+          this.onRemoteProfile?.(res);
+        }
       }
     } finally {
       this.flushing = false;
     }
   }
+
+  /** Set by Experience so a flushed sync still reaches ProgressStore. */
+  onRemoteProfile: ((res: SyncProfileResult) => void) | null = null;
 }

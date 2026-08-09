@@ -21,6 +21,7 @@ import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
 import { RemoteProgress } from '../backend/RemoteProgress';
+import type { SyncProfileResult } from '../backend/BackendTypes';
 import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
@@ -358,17 +359,33 @@ export class Experience {
     try {
       const boot = await this.remote.bootstrap();
       if (!boot) return;
-      // Phase 4 reconciles the profile. For now the arrival is only logged,
-      // so a live backend cannot yet move a player's local progress.
       console.info('[backend] bootstrap ok', {
         uid: boot.player.uid,
         serverBest: boot.player.stats.bestScore,
         localBest: this.progress.profile.bestScore,
       });
+
+      // Push this device's progress up and adopt the reconciled result.
+      this.remote.onRemoteProfile = (res): void => this.adoptRemoteProfile(res);
+      const synced = await this.remote.syncProfile(this.progress.snapshot());
+      if (synced) this.adoptRemoteProfile(synced);
       this.loop.refreshIntro();
     } catch (err) {
       console.warn('[backend] bootstrap threw, staying offline', err);
     }
+  }
+
+  /** Folds a server-reconciled profile back into the local store. */
+  private adoptRemoteProfile(res: SyncProfileResult): void {
+    this.progress.applyRemote(res.player);
+    if (res.rejectedItems.length > 0) {
+      console.warn('[backend] inventory claims rejected', res.rejectedItems);
+    }
+    this.applyCosmetics();
+    console.info('[backend] profile synced', {
+      best: this.progress.profile.bestScore,
+      balls: this.progress.profile.ownedBalls.length,
+    });
   }
 
   /** Re-applies the equipped ball/paddle skins to the live objects. */

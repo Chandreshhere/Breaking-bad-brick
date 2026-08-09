@@ -60,10 +60,16 @@ export interface BootstrapResult {
   serverTime: number;
 }
 
+export interface SyncProfileResult {
+  player: RemotePlayer;
+  /** Items the client claimed that the server would not vouch for. */
+  rejectedItems: string[];
+}
+
 /** Queued mutation shape. Kept small — it is persisted between sessions. */
 export interface OutboxItem {
   id: string;
-  op: 'submitRun' | 'purchaseCosmetic' | 'equipCosmetic' | 'syncSettings';
+  op: 'submitRun' | 'purchaseCosmetic' | 'equipCosmetic' | 'syncProfile';
   payload: unknown;
   idempotencyKey: string;
   createdAt: number;

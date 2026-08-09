@@ -9,7 +9,31 @@
 
 const KEY = 'acb-profile';
 
+/** Shape version of the local profile. */
+export const PROFILE_SCHEMA_VERSION = 2;
+
+/** The subset the server merges. Coins are deliberately absent — see below. */
+export interface ProfileSnapshot {
+  updatedAt: number;
+  stats: {
+    bestScore: number;
+    bestLevel: number;
+    bestCombo: number;
+    runs: number;
+  };
+  inventory: {
+    ownedBalls: string[];
+    ownedPaddles: string[];
+    equippedBall: string;
+    equippedPaddle: string;
+  };
+}
+
 export interface Profile {
+  /** Bumped when the shape changes so old saves can be upgraded, not lost. */
+  schemaVersion: number;
+  /** Client clock, used as the tiebreak for last-write-wins fields. */
+  updatedAt: number;
   bestScore: number;
   bestLevel: number;
   bestCombo: number;
@@ -23,6 +47,8 @@ export interface Profile {
 
 function blank(): Profile {
   return {
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    updatedAt: 0,
     bestScore: 0,
     bestLevel: 1,
     bestCombo: 0,
@@ -64,6 +90,7 @@ export class ProgressStore {
 
   private save(): void {
     try {
+      this.data.updatedAt = Date.now();
       localStorage.setItem(KEY, JSON.stringify(this.data));
     } catch {
       /* private mode — keep going in memory */
@@ -126,6 +153,75 @@ export class ProgressStore {
   /** Rewarded-ad payout. */
   grantCoins(n: number): void {
     this.data.coins += Math.max(0, Math.floor(n));
+    this.save();
+  }
+
+  /**
+   * What the server needs to reconcile this device.
+   *
+   * `coins` is intentionally not included. The wallet is server-owned, and
+   * the local balance came from a freely editable localStorage value, so
+   * sending it would invite exactly the forgery the server exists to stop.
+   */
+  snapshot(): ProfileSnapshot {
+    return {
+      updatedAt: this.data.updatedAt,
+      stats: {
+        bestScore: this.data.bestScore,
+        bestLevel: this.data.bestLevel,
+        bestCombo: this.data.bestCombo,
+        runs: this.data.runs,
+      },
+      inventory: {
+        ownedBalls: [...this.data.ownedBalls],
+        ownedPaddles: [...this.data.ownedPaddles],
+        equippedBall: this.data.ball,
+        equippedPaddle: this.data.paddle,
+      },
+    };
+  }
+
+  /**
+   * Adopts the reconciled profile the server returned.
+   *
+   * Records and inventory take the server's value, which has already merged
+   * this device's contribution. The wallet is left alone until the server
+   * owns coin *earning* too — adopting a server balance of 0 while the
+   * client is still awarding coins locally would simply erase them every
+   * sync. That switchover happens with run submission.
+   */
+  applyRemote(remote: {
+    stats: { bestScore: number; bestLevel: number; bestCombo: number; runs: number };
+    inventory: {
+      ownedBalls: string[];
+      ownedPaddles: string[];
+      equippedBall: string;
+      equippedPaddle: string;
+    };
+  }): void {
+    // Records take the higher of the two: a record set moments ago on this
+    // device may not have reached the server yet, and losing it would be
+    // worse than briefly disagreeing.
+    this.data.bestScore = Math.max(this.data.bestScore, remote.stats.bestScore);
+    this.data.bestLevel = Math.max(this.data.bestLevel, remote.stats.bestLevel);
+    this.data.bestCombo = Math.max(this.data.bestCombo, remote.stats.bestCombo);
+    this.data.runs = Math.max(this.data.runs, remote.stats.runs);
+
+    // Inventory is *replaced*, not merged. The server has already folded in
+    // whatever this device legitimately owned, so anything missing from its
+    // answer was refused — and re-adding it here would quietly restore the
+    // exact claims the server just rejected.
+    //
+    // Consequence worth knowing: while purchases are still made locally,
+    // a skin bought offline is provisional until buying moves server-side.
+    this.data.ownedBalls = [...remote.inventory.ownedBalls];
+    this.data.ownedPaddles = [...remote.inventory.ownedPaddles];
+    this.data.ball = this.data.ownedBalls.includes(remote.inventory.equippedBall)
+      ? remote.inventory.equippedBall
+      : 'CLASSIC';
+    this.data.paddle = this.data.ownedPaddles.includes(remote.inventory.equippedPaddle)
+      ? remote.inventory.equippedPaddle
+      : 'CLASSIC';
     this.save();
   }
 }

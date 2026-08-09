@@ -1,7 +1,8 @@
 # Backend — status and setup
 
-Implements **Phases 0–3** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
-Firebase foundation, client abstraction, anonymous auth and bootstrap.
+Implements **Phases 0–4** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
+Firebase foundation, client abstraction, anonymous auth, bootstrap and
+cloud save.
 
 The game runs **exactly as before with no backend configured**. That is the
 designed fallback, not a degraded mode — see "Offline is the default" below.
@@ -14,7 +15,9 @@ designed fallback, not a degraded mode — see "Offline is the default" below.
 functions/                     Cloud Functions (TypeScript, Node 22, 2nd gen)
   src/index.ts                 exports the callables
   src/callable/bootstrap.ts    the single launch call
+  src/callable/syncProfile.ts  reconciles a device into the record
   src/domain/players/model.ts  authoritative player document
+  src/domain/players/merge.ts  the per-field merge rules
   src/security/                auth · idempotency · rateLimit · validation
   src/utils/                   firestore · errors · logging
 
@@ -37,15 +40,22 @@ firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 | 1 — Firebase foundation | Done |
 | 2 — Client abstraction | Done |
 | 3 — Anonymous auth + bootstrap | Done |
-| 4 — Cloud save + migration | **Not started** |
+| 4 — Cloud save + migration | Done |
 | 5 — Server-authoritative economy | Not started |
 | 6 — Run submission + anti-cheat | Not started |
 | 7 — Leaderboards + daily | Not started |
 | 8–12 | Not started |
 
-**Nothing yet writes to the cloud.** `bootstrap` creates and reads the player
-document; local `ProgressStore` is still the only thing that persists
-progress. Phase 4 reconciles them.
+**The wallet is still client-owned.** Records, inventory and settings now
+reconcile with the server; coins do not. Coins cannot become
+server-authoritative until the server also *grants* them — otherwise every
+sync would reset a locally-earned balance to zero. That switchover happens in
+Phase 6 (run submission), and Phase 5 (purchases) must land with it.
+
+Consequence today: a skin bought offline is provisional. The server refuses
+inventory it never granted, and the client adopts the server's answer, so an
+unbacked item disappears on the next sync. With no players and no configured
+backend this is invisible; it is why 5 and 6 ship together.
 
 ---
 
@@ -84,7 +94,14 @@ document in Firestore under `players/`. Reloading reuses the same uid.
 ### Verified
 
 - Anonymous sign-in returns a durable uid, stable across reloads
-- `bootstrap` creates `players/{uid}` with the Phase-4 schema, `coins: 0`
+- `bootstrap` creates `players/{uid}` with `coins: 0`
+- A local profile carrying `bestScore 7777`, `coins 999999` and a forged
+  `SOLAR` skin syncs to: server `bestScore 7777`, `coins 0`,
+  `ownedBalls ["CLASSIC"]` — record kept, currency and skin refused, and
+  `inventory_claim_rejected` logged on both sides
+- The client adopts the server's inventory rather than re-merging its own,
+  so a refused item does not survive locally
+- Production build with a `demo-*` config makes **no** network requests
 - No console errors; no Firebase requests at all when unconfigured
 
 ---
@@ -140,12 +157,16 @@ separates `wallet` from everything the client may influence, and
 become client-owned, because retro-fitting authority after launch means
 either resetting balances or honouring forged ones.
 
-**Legacy coin migration is deliberately not implemented.** The existing
-`localStorage['acb-profile']` is editable, so uploading its balance would let
-anyone mint currency by setting `coins` before first sign-in. Phase 4 must
-migrate best score / levels / cosmetics and start the wallet from a
-server-controlled amount. **If the game has not publicly launched, migrate no
-coins at all.**
+**Legacy migration imports nothing forgeable.** Coins are never imported, and
+`LEGACY_COSMETIC_IMPORT` in `merge.ts` is **false**: pre-backend inventory
+lived in editable localStorage, so honouring those claims would let anyone
+grant themselves the whole catalogue by writing one key before first sign-in
+— the coin hole wearing a different hat. Only records and settings migrate.
+Set it true only if a real player base earned cosmetics on the old build.
+
+**A `demo-*` project id is rejected in production builds.** `.env.local` is
+read by `vite build` too, so a developer's emulator config can otherwise ship
+to players and point the game at a project that does not exist.
 
 **Sentry, not Crashlytics, for the web build.** Crashlytics targets native
 Apple/Android/Flutter/Unity, not browser JS. Store builds can use Crashlytics
@@ -153,10 +174,15 @@ for native crashes; the web bundle needs a browser SDK.
 
 ---
 
-## Next: Phase 4
+## Next: Phases 5 + 6, together
 
-Cloud save and the offline outbox. It must implement the merge rules in
-[PRODUCTION_SPEC.md §6](PRODUCTION_SPEC.md) — `max` for bests, `union` for
-inventory, last-write-wins for equipment and settings, and **server always
-wins for coins** — plus the one-time legacy migration with the coin policy
-above.
+They have to ship as one change, because the wallet is only coherent when the
+server both grants and spends coins:
+
+- **6 — run submission** moves *earning* server-side (`startRun` issues a
+  signed ticket, `submitRun` validates plausibility and awards the coins).
+- **5 — economy** moves *spending* server-side (`purchaseCosmetic` reads the
+  price from the catalogue, never from the client).
+
+Only once both exist should `applyRemote` adopt the server's coin balance and
+`ProgressStore.finishRun`/`buy` stop touching coins locally.

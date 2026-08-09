@@ -34,6 +34,17 @@ function readConfig(): FirebaseConfig | null {
   const appId = env['VITE_FIREBASE_APP_ID'] as string | undefined;
   const authDomain = env['VITE_FIREBASE_AUTH_DOMAIN'] as string | undefined;
   if (!apiKey || !projectId || !appId || !authDomain) return null;
+
+  // A `demo-*` project id only exists for the local emulator. If one reaches
+  // a production build it means a developer's .env.local leaked into the
+  // release — and the build would then talk to a project that does not
+  // exist, on the real network, for every player. Refuse it outright: no
+  // backend is a working state, a misdirected backend is not.
+  if (!import.meta.env.DEV && projectId.startsWith('demo-')) {
+    console.warn('[backend] refusing a demo project id in a production build.');
+    return null;
+  }
+
   return {
     apiKey,
     projectId,

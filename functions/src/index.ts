@@ -9,3 +9,4 @@
  * (AdMob SSV, RevenueCat webhooks) and are added in later phases.
  */
 export { bootstrap } from './callable/bootstrap';
+export { syncProfile } from './callable/syncProfile';

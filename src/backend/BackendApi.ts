@@ -1,5 +1,5 @@
 import { initFirebase } from './FirebaseClient';
-import type { BootstrapResult } from './BackendTypes';
+import type { BootstrapResult, SyncProfileResult } from './BackendTypes';
 
 /**
  * Thin wrapper over the callable functions.
@@ -41,5 +41,10 @@ export class BackendApi {
   /** One launch call. 3s budget — after that the game starts offline. */
   bootstrap(): Promise<BootstrapResult | null> {
     return this.call<BootstrapResult>('bootstrap', {}, 3000);
+  }
+
+  /** Pushes local progress up, returns the reconciled profile. */
+  syncProfile(profile: unknown): Promise<SyncProfileResult | null> {
+    return this.call<SyncProfileResult>('syncProfile', { profile }, 8000);
   }
 }
