@@ -15,6 +15,13 @@
 
 export type AdResult = 'completed' | 'dismissed' | 'unavailable';
 
+/** True only inside a Capacitor native shell, where AdMob actually exists. */
+export function isNativeShell(): boolean {
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
+    .Capacitor;
+  return cap?.isNativePlatform?.() === true;
+}
+
 export interface RewardedAdProvider {
   /** False when nothing is loaded — the game hides the offer entirely. */
   isAvailable(): boolean;
@@ -110,6 +117,13 @@ export class ConsentGatedAd implements RewardedAdProvider {
     private inner: RewardedAdProvider,
     private allowed: () => boolean
   ) {}
+
+  /** Preloads the wrapped provider, if it needs it. Never before consent. */
+  async prepare(): Promise<void> {
+    if (!this.allowed()) return;
+    const inner = this.inner as { prepare?: () => Promise<void> };
+    await inner.prepare?.();
+  }
 
   isAvailable(): boolean {
     return this.allowed() && this.inner.isAvailable();

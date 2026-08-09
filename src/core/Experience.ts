@@ -27,7 +27,14 @@ import type {
   SubmitRunResult,
   SyncProfileResult,
 } from '../backend/BackendTypes';
-import { ConsentGatedAd, PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
+import { adConfig } from '../backend/AdConfig';
+import {
+  AdMobRewardedAd,
+  ConsentGatedAd,
+  isNativeShell,
+  PlaceholderRewardedAd,
+  type RewardedAdProvider,
+} from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
 import { ProgressStore } from '../game/Progress';
@@ -88,10 +95,16 @@ export class Experience {
    * Swap this for a real network (AdMob via Capacitor on the stores, an
    * HTML5 ad SDK on web) and nothing else changes. See src/game/Ads.ts.
    */
+  /**
+   * Rewarded ads. AdMob inside a Capacitor shell, the visible placeholder on
+   * web — AdMob rewarded video is native-only, so a browser build has no real
+   * inventory to show. The consent gate wraps whichever is active, so a new
+   * placement cannot forget to check.
+   */
   ads: RewardedAdProvider = new ConsentGatedAd(
-    // Swap the inner provider for AdMobRewardedAd in a Capacitor build; the
-    // gate and everything downstream stay the same.
-    new PlaceholderRewardedAd(),
+    isNativeShell()
+      ? new AdMobRewardedAd(adConfig().rewardedId, () => this.remote.uid)
+      : new PlaceholderRewardedAd(),
     () => this.consent.adsAllowed
   );
   readonly audio = new AudioFx();
@@ -422,6 +435,9 @@ export class Experience {
       // and folded this device's history in. Flipping earlier would show a
       // zero balance to a player who had coins a moment ago.
       this.progress.serverAuthoritative = true;
+      // Preload the first rewarded ad now that there is a uid to attach to
+      // the server-side verification callback.
+      if (this.ads instanceof ConsentGatedAd) void this.ads.prepare();
       this.loop.onOpenLeaderboard = (onBack): void =>
         this.openLeaderboard('global_alltime', onBack);
 

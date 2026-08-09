@@ -274,10 +274,31 @@ signature and grants the reward exactly once.
 ad finished; the coins arrive when AdMob calls `admobSsv`. A client that
 grants its own reward can grant itself infinite rewards.
 
-What cannot be finished without you:
+### AdMob setup
 
-- An **AdMob account**, an app, a rewarded ad unit id, and SSV pointed at the
-  deployed `admobSsv` URL.
+Publisher ID `pub-4951837849307649` exists. A publisher account alone cannot
+serve ads — inventory hangs off an **app** and an **ad unit** inside it.
+
+1. **Apps → Add app.** One entry per platform: Android and iOS are separate
+   apps with separate ids. Answer "is it listed on a store?" honestly; you can
+   add the store listing later.
+2. **Ad units → Add ad unit → Rewarded.** Name it something like
+   `rewarded_continue`. Copy the unit id (`ca-app-pub-…/…`, with a slash) and
+   the app id (`ca-app-pub-…~…`, with a tilde).
+3. **On that ad unit → Server-side verification**, set the callback to your
+   deployed function:
+   `https://us-central1-<project-id>.cloudfunctions.net/admobSsv`
+4. Put the ids in the deploy environment as `VITE_ADMOB_APP_ID` and
+   `VITE_ADMOB_REWARDED_ID`.
+
+**Leave them blank until you are ready to go live.** With no ids the game uses
+Google's published test units, which always fill and never earn. Testing
+against real units is the classic way to lose an AdMob account: Google cannot
+distinguish your testing from click fraud, and the suspension applies to the
+whole account, not one app. `AdConfig` also refuses real ids in a dev build
+for the same reason.
+
+Still outstanding:
 - **Capacitor**, since AdMob rewarded video is native-only. On web the
   provider reports unavailable and the placeholder stands in.
 - The consent gate here is deliberately simple. EU store traffic needs

@@ -30,13 +30,18 @@ export class RemoteProgress implements RemoteProgressApi {
   private readonly api = new BackendApi();
   private readonly outbox = new Outbox();
   private booted: BootstrapResult | null = null;
-  private uid: string | null = null;
+  private currentUid: string | null = null;
   private flushing = false;
 
   readonly enabled = backendConfigured();
 
+  /** Firebase uid, forwarded to AdMob so its SSV callback names the player. */
+  get uid(): string | null {
+    return this.currentUid;
+  }
+
   get online(): boolean {
-    return this.enabled && this.uid !== null && navigator.onLine;
+    return this.enabled && this.currentUid !== null && navigator.onLine;
   }
 
   get player(): BootstrapResult['player'] | null {
@@ -60,8 +65,8 @@ export class RemoteProgress implements RemoteProgressApi {
    */
   async bootstrap(): Promise<BootstrapResult | null> {
     if (!this.enabled) return null;
-    this.uid = await this.auth.signIn();
-    if (!this.uid) return null;
+    this.currentUid = await this.auth.signIn();
+    if (!this.currentUid) return null;
     this.booted = await this.api.bootstrap();
     if (this.booted) void this.flush();
     return this.booted;
