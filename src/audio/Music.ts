@@ -1,6 +1,6 @@
 import type { BiomeName } from '../environment/EnvironmentDirector';
 import type { AudioFx } from './AudioFx';
-import { DEFAULT_TRACK, TRACKS, type MusicTrack } from './tracks';
+import { BOSS_TRACK, DEFAULT_TRACK, TRACKS, type MusicTrack } from './tracks';
 
 /**
  * Adaptive music engine — fully synthesized, no audio files. Each world has
@@ -31,11 +31,28 @@ interface StemLevels {
   hats: number;
   melody: number;
   overdrive: number;
+  guitar: number;
 }
 
 /** Smooth 0..1 gate around a threshold. */
 function gate(intensity: number, from: number, to: number): number {
   return Math.min(1, Math.max(0, (intensity - from) / (to - from)));
+}
+
+/**
+ * Classic waveshaper transfer curve. `amount` is the drive: the harder the
+ * curve bends, the more odd harmonics get generated, which is what turns a
+ * pair of sawtooth oscillators into something that reads as a guitar amp.
+ */
+function makeDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
+  const samples = 8192;
+  const curve = new Float32Array(new ArrayBuffer(samples * 4));
+  const deg = Math.PI / 180;
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
 }
 
 export class MusicEngine {
@@ -53,6 +70,10 @@ export class MusicEngine {
   private track: MusicTrack = DEFAULT_TRACK;
   /** Queued track change — applied on a bar line so it never lands mid-phrase. */
   private pendingTrack: MusicTrack | null = null;
+  private biome: BiomeName = 'CLAY';
+  private bossMode = false;
+  /** Distortion transfer curve, built once — it is 8k samples wide. */
+  private distortionCurve: Float32Array<ArrayBuffer> | null = null;
 
   constructor(private audio: AudioFx) {}
 
@@ -65,7 +86,19 @@ export class MusicEngine {
    * change lands on a downbeat rather than cutting a phrase in half.
    */
   setBiome(biome: BiomeName): void {
-    const next = TRACKS[biome] ?? DEFAULT_TRACK;
+    this.biome = biome;
+    this.refreshTrack();
+  }
+
+  /** Boss levels override the world's track with the metal one. */
+  setBossMode(on: boolean): void {
+    if (this.bossMode === on) return;
+    this.bossMode = on;
+    this.refreshTrack();
+  }
+
+  private refreshTrack(): void {
+    const next = this.bossMode ? BOSS_TRACK : (TRACKS[this.biome] ?? DEFAULT_TRACK);
     if (next === this.track || next === this.pendingTrack) return;
     if (!this.ctx) {
       this.track = next; // not started yet — adopt it directly
@@ -136,6 +169,7 @@ export class MusicEngine {
       hats: makeStem(),
       melody: makeStem(),
       overdrive: makeStem(),
+      guitar: makeStem(),
     };
 
     // AMBIENCE pad: the current track's chord, always running.
@@ -170,6 +204,9 @@ export class MusicEngine {
       hats: gate(i, 0.4, 0.52),
       melody: gate(i, 0.56, 0.7),
       overdrive: gate(i, 0.8, 0.9),
+      // The boss riff is the floor of its track, not a reward layer — it
+      // has to be there the moment the fight starts.
+      guitar: 0.55 + gate(i, 0.2, 0.75) * 0.45,
     };
   }
 
@@ -200,6 +237,7 @@ export class MusicEngine {
         if (this.pendingTrack) {
           this.track = this.pendingTrack;
           this.pendingTrack = null;
+          this.distortionCurve = null; // drive is per-track
           this.buildPad();
         }
         this.applyStemLevels(this.nextStepTime);
@@ -247,6 +285,53 @@ export class MusicEngine {
     if (tr.stabSteps.includes(step)) {
       const root = tr.subNotes[this.bar % tr.subNotes.length];
       this.stab(t, root * 4);
+    }
+
+    if (tr.guitarSteps.includes(step)) {
+      const root = tr.subNotes[this.bar % tr.subNotes.length] * tr.guitarOctave;
+      const accent = tr.guitarAccents.includes(step);
+      // Accents ring out as a chord; everything else is a palm-muted chug.
+      this.guitar(t, root, accent ? 0.34 : 0.14, accent ? 0.42 : 0.085);
+    }
+  }
+
+  /**
+   * Distorted power chord: root plus a fifth, driven through a waveshaper.
+   * Two saws into hard clipping is what makes it read as a guitar rather
+   * than a synth — the clipping generates the odd harmonics.
+   */
+  private guitar(t: number, freq: number, gain: number, decay: number): void {
+    if (!this.ctx || !this.stems) return;
+    const ctx = this.ctx;
+    if (!this.distortionCurve) this.distortionCurve = makeDistortionCurve(this.track.guitarDrive);
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = this.distortionCurve;
+    shaper.oversample = '2x';
+
+    // Roll off the fizz above the amp's range, and the mud below it.
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 3200;
+    const body = ctx.createBiquadFilter();
+    body.type = 'highpass';
+    body.frequency.value = 90;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + decay);
+
+    shaper.connect(tone).connect(body).connect(g).connect(this.stems.guitar);
+
+    for (const mult of [1, 1.4983]) {
+      // 1.4983 = a just perfect fifth. Root + fifth = the power chord.
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq * mult;
+      osc.detune.value = (this.rand() - 0.5) * 8; // two amps, never quite in tune
+      osc.connect(shaper);
+      osc.start(t);
+      osc.stop(t + decay + 0.02);
     }
   }
 

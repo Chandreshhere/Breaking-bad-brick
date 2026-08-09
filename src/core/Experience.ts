@@ -204,7 +204,9 @@ export class Experience {
       this.weather.setMode(weather.mode, weather.intensity);
       this.vfx.comicMode = this.cfg.worldKind === 'COMIC';
       // Each world has its own track; the engine swaps it on the next bar.
+      // Boss levels override the arena entirely with the metal track.
       this.music.setBiome(biome);
+      this.music.setBossMode(level % 4 === 0);
     };
     this.loop.onLevelChanged = applyLevelEnvironment;
 

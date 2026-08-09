@@ -45,7 +45,26 @@ export interface MusicTrack {
   hatHighpass: number;
   /** Fraction of a step that odd steps are pushed late (0 = straight). */
   swing: number;
+  /**
+   * Distorted power-chord guitar. Empty on every world track — this is the
+   * boss's voice. `guitarSteps` are palm-muted chugs; `guitarAccents` ring
+   * out as full chords.
+   */
+  guitarSteps: number[];
+  guitarAccents: number[];
+  /** WaveShaper drive. 0 = clean, 400+ = a wall of gain. */
+  guitarDrive: number;
+  /** Octave multiplier applied to the bar root before the chord is built. */
+  guitarOctave: number;
 }
+
+/** Every world track is guitar-free; the boss track overrides these. */
+const NO_GUITAR = {
+  guitarSteps: [] as number[],
+  guitarAccents: [] as number[],
+  guitarDrive: 0,
+  guitarOctave: 4,
+};
 
 const TRAP: MusicTrack = {
   name: 'NIGHT SESSION — D minor trap',
@@ -75,6 +94,7 @@ const TRAP: MusicTrack = {
   stabCutoff: 2400,
   hatHighpass: 7000,
   swing: 0.12,
+  ...NO_GUITAR,
 };
 
 /** Driving four-on-the-floor synthwave — cold, relentless, A minor. */
@@ -106,6 +126,7 @@ const SYNTHWAVE: MusicTrack = {
   stabCutoff: 3200,
   hatHighpass: 8500,
   swing: 0,
+  ...NO_GUITAR,
 };
 
 /** Half-time industrial doom — slow, enormous, E phrygian. */
@@ -137,6 +158,7 @@ const DOOM: MusicTrack = {
   stabCutoff: 900, // muffled, heavy
   hatHighpass: 6000,
   swing: 0,
+  ...NO_GUITAR,
 };
 
 /** Weightless ambient bells — D major pentatonic, nothing percussive. */
@@ -168,6 +190,7 @@ const AMBIENT: MusicTrack = {
   stabCutoff: 1800,
   hatHighpass: 11000,
   swing: 0,
+  ...NO_GUITAR,
 };
 
 /** Chiptune — fast, bright, square-wave C major. */
@@ -199,6 +222,7 @@ const CHIPTUNE: MusicTrack = {
   stabCutoff: 4000,
   hatHighpass: 9000,
   swing: 0,
+  ...NO_GUITAR,
 };
 
 /** Big brassy comic funk — syncopated, punchy, G minor. */
@@ -230,7 +254,50 @@ const FUNK: MusicTrack = {
   stabCutoff: 2800,
   hatHighpass: 7500,
   swing: 0.18, // the shuffle that makes it read as funk
+  ...NO_GUITAR,
 };
+
+/**
+ * BOSS — the only track that isn't a world. Overrides whatever arena you're
+ * in the moment a boss level starts: 172 BPM, drop-E, double-kick under a
+ * wall of distorted power chords. Palm-muted 16th chugs carry the groove and
+ * the accents ring out on the downbeats, with a screaming lead on top.
+ */
+const METAL: MusicTrack = {
+  name: 'BOSS — drop-E metal',
+  bpm: 172,
+  subNotes: [41.2, 41.2, 36.71, 49.0], // E1 E1 D1 G1
+  pluckScale: [659.25, 739.99, 783.99, 987.77, 1174.66], // E5 F#5 G5 B5 D6 — lead register
+  padChord: [82.41, 123.47, 164.81], // E2 B2 E3 — an open fifth drone
+  padType: 'sawtooth',
+  padGain: 0.018,
+  kickSteps: [0, 1, 4, 6, 8, 9, 12, 14], // double-kick gallop
+  snareSteps: [4, 12],
+  melodySteps: [3, 7, 11, 15],
+  stabSteps: [],
+  melodyChance: 0.5, // lead wails, doesn't noodle
+  hatMode: 'four', // crash-ish accents; the guitar is the 16ths
+  kickFrom: 200,
+  kickTo: 44,
+  kickDecay: 0.13, // tight and fast — double kick needs to not smear
+  snareBand: 2600,
+  snareTone: 240,
+  bassType: 'sawtooth',
+  bassGlide: false,
+  bassDecay: 0.18,
+  pluckType: 'sawtooth',
+  pluckDecay: 0.3,
+  stabType: 'sawtooth',
+  stabCutoff: 3000,
+  hatHighpass: 8000,
+  swing: 0,
+  guitarSteps: [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 14, 15],
+  guitarAccents: [0, 8],
+  guitarDrive: 420,
+  guitarOctave: 4,
+};
+
+export const BOSS_TRACK = METAL;
 
 export const TRACKS: Record<BiomeName, MusicTrack> = {
   CLAY: TRAP,
