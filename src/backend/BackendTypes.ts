@@ -87,8 +87,28 @@ export interface RunSubmission {
 export interface SubmitRunResult {
   accepted: boolean;
   verification: 'VERIFIED' | 'UNVERIFIED';
+  /** False for offline runs — they score and pay, but do not rank. */
+  ranked: boolean;
   coinsAwarded: number;
   player: RemotePlayer;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  uid: string;
+  displayName: string;
+  country: string | null;
+  score: number;
+  levelReached: number;
+  isMe: boolean;
+}
+
+export interface LeaderboardPage {
+  board: string;
+  rows: LeaderboardRow[];
+  /** The caller's own standing, even when off the visible page. */
+  me: LeaderboardRow | null;
+  total: number;
 }
 
 export interface PurchaseResult {

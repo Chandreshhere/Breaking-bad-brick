@@ -1,6 +1,7 @@
 import { initFirebase } from './FirebaseClient';
 import type {
   BootstrapResult,
+  LeaderboardPage,
   PurchaseResult,
   RunSubmission,
   RunTicket,
@@ -70,5 +71,9 @@ export class BackendApi {
 
   equip(kind: 'ball' | 'paddle', id: string): Promise<PurchaseResult | null> {
     return this.call<PurchaseResult>('equipCosmetic', { kind, id }, 8000);
+  }
+
+  leaderboard(board: string, limit = 25): Promise<LeaderboardPage | null> {
+    return this.call<LeaderboardPage>('getLeaderboard', { board, limit }, 8000);
   }
 }

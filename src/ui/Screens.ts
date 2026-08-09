@@ -80,6 +80,20 @@ const CSS = /* css */ `
 .acb-item-price { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #efd42e; }
 .acb-item-lock { color: #9aa8a0; }
 
+/* Leaderboard */
+.acb-lb-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; gap: 14px; padding: 12vh 5% 4vh; box-sizing: border-box; }
+.acb-lb-list { width: min(620px, 100%); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.acb-lb-row { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center;
+  padding: 10px 14px; border-radius: 10px; background: rgba(0,0,0,0.3);
+  font-size: clamp(12px, 2.6vw, 15px); letter-spacing: 0.06em; }
+.acb-lb-me { background: rgba(239,212,46,0.16); border: 1px solid rgba(239,212,46,0.6); }
+.acb-lb-rank { color: #efd42e; font-weight: 700; }
+.acb-lb-score { color: #efd42e; font-weight: 700; }
+.acb-lb-state { color: rgba(242,237,218,0.7); font-size: clamp(12px,2.6vw,15px);
+  letter-spacing: 0.16em; text-align: center; padding: 30px 10px; line-height: 1.7; }
+.acb-lb-sep { text-align: center; color: rgba(242,237,218,0.35); letter-spacing: 0.4em; }
+
 /* Portrait: the absolute landscape layout collapses on a phone — the CTA
    lands on top of the heading. Stack it instead, and put the button at the
    bottom where a thumb actually reaches. */
@@ -248,7 +262,12 @@ export class Screens {
     onPlay: () => void,
     onSettings?: () => void,
     arena?: { label: string; open: () => void },
-    extras: { best?: number; coins?: number; onShop?: () => void } = {}
+    extras: {
+      best?: number;
+      coins?: number;
+      onShop?: () => void;
+      onLeaderboard?: () => void;
+    } = {}
   ): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
@@ -274,6 +293,7 @@ export class Screens {
         <button class="acb-pill" data-action="play">${BALL_SVG}PLAY</button>
         ${arena ? `<button class="acb-pill acb-pill-ghost" data-action="arena">ARENA: ${arena.label}</button>` : ''}
         ${extras.onShop ? '<button class="acb-pill acb-pill-ghost" data-action="shop">SHOP</button>' : ''}
+        ${extras.onLeaderboard ? '<button class="acb-pill acb-pill-ghost" data-action="leaderboard">RANKS</button>' : ''}
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="play"]')!.onclick = onPlay;
     const gear = el.querySelector<HTMLButtonElement>('[data-action="settings"]')!;
@@ -283,6 +303,8 @@ export class Screens {
     if (arenaBtn && arena) arenaBtn.onclick = arena.open;
     const shopBtn = el.querySelector<HTMLButtonElement>('[data-action="shop"]');
     if (shopBtn && extras.onShop) shopBtn.onclick = extras.onShop;
+    const lbBtn = el.querySelector<HTMLButtonElement>('[data-action="leaderboard"]');
+    if (lbBtn && extras.onLeaderboard) lbBtn.onclick = extras.onLeaderboard;
     this.show(el);
   }
 
@@ -529,6 +551,69 @@ export class Screens {
     });
     el.querySelectorAll<HTMLButtonElement>('[data-id]').forEach((b) => {
       b.onclick = (): void => opts.onPick(b.dataset['id']!);
+    });
+    el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
+    this.show(el);
+  }
+
+
+  /**
+   * Leaderboard. Three states, because it is fed by the network: loading,
+   * loaded and unavailable. `me` is rendered even when the player is far
+   * below the visible page — "where am I" is the question that makes a board
+   * motivating, and a top-25 list alone cannot answer it.
+   */
+  showLeaderboard(opts: {
+    tab: 'global_alltime' | 'weekly';
+    state: 'loading' | 'ready' | 'offline';
+    rows: Array<{ rank: number; displayName: string; score: number; levelReached: number; isMe: boolean }>;
+    me: { rank: number; score: number } | null;
+    total: number;
+    onTab: (tab: 'global_alltime' | 'weekly') => void;
+    onBack: () => void;
+  }): void {
+    const el = document.createElement('div');
+    el.className = 'acb-screen';
+
+    let body: string;
+    if (opts.state === 'loading') {
+      body = '<div class="acb-lb-state">LOADING…</div>';
+    } else if (opts.state === 'offline') {
+      body =
+        '<div class="acb-lb-state">LEADERBOARD UNAVAILABLE<br>' +
+        '<span style="opacity:0.6;font-size:0.85em">YOUR SCORES ARE SAFE AND WILL RANK LATER</span></div>';
+    } else if (opts.rows.length === 0) {
+      body = '<div class="acb-lb-state">NO RANKED SCORES YET<br>' +
+        '<span style="opacity:0.6;font-size:0.85em">FINISH A RUN TO CLAIM FIRST PLACE</span></div>';
+    } else {
+      const row = (r: { rank: number; displayName: string; score: number; levelReached: number; isMe: boolean }): string =>
+        `<div class="acb-lb-row${r.isMe ? ' acb-lb-me' : ''}">
+           <span class="acb-lb-rank">#${r.rank}</span>
+           <span>${r.displayName}${r.isMe ? ' (YOU)' : ''}</span>
+           <span class="acb-lb-score">${r.score}</span>
+         </div>`;
+      const onPage = opts.rows.some((r) => r.isMe);
+      const mine =
+        !onPage && opts.me
+          ? '<div class="acb-lb-sep">· · ·</div>' +
+            row({ rank: opts.me.rank, displayName: 'YOU', score: opts.me.score, levelReached: 0, isMe: true })
+          : '';
+      body = `<div class="acb-lb-list">${opts.rows.map(row).join('')}${mine}</div>`;
+    }
+
+    el.innerHTML = `
+      <div class="acb-wordmark">BREAKING BAD BRICK</div>
+      <div class="acb-lb-wrap">
+        <h2 style="margin:0;letter-spacing:0.2em;font-size:clamp(18px,4vw,26px)">LEADERBOARD</h2>
+        <div class="acb-shop-tabs">
+          <button class="acb-tab${opts.tab === 'global_alltime' ? ' acb-tab-on' : ''}" data-tab="global_alltime">ALL TIME</button>
+          <button class="acb-tab${opts.tab === 'weekly' ? ' acb-tab-on' : ''}" data-tab="weekly">THIS WEEK</button>
+        </div>
+        ${body}
+        <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
+      </div>`;
+    el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
+      b.onclick = (): void => opts.onTab(b.dataset['tab'] as 'global_alltime' | 'weekly');
     });
     el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
     this.show(el);

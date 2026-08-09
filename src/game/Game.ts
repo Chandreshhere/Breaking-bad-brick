@@ -140,6 +140,7 @@ export class Game {
   /** Intro readouts + the shop entry point, both owned by Experience. */
   getProfileSummary: (() => { best: number; coins: number }) | null = null;
   onOpenShop: ((onBack: () => void) => void) | null = null;
+  onOpenLeaderboard: ((onBack: () => void) => void) | null = null;
   /** Server run lifecycle. Both are fire-and-forget; neither may block play. */
   onRunStart: (() => void) | null = null;
   onRunSubmit:
@@ -363,6 +364,12 @@ export class Game {
           ? (): void => {
               this.audio.click();
               this.onOpenShop?.(() => this.enterIntro());
+            }
+          : undefined,
+        onLeaderboard: this.onOpenLeaderboard
+          ? (): void => {
+              this.audio.click();
+              this.onOpenLeaderboard?.(() => this.enterIntro());
             }
           : undefined,
       }

@@ -1,8 +1,8 @@
 # Backend — status and setup
 
-Implements **Phases 0–6** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
+Implements **Phases 0–7** of [PRODUCTION_SPEC.md](PRODUCTION_SPEC.md):
 Firebase foundation, client abstraction, anonymous auth, bootstrap, cloud
-save, run validation and a server-authoritative economy.
+save, run validation, a server-authoritative economy and leaderboards.
 
 The game runs **exactly as before with no backend configured**. That is the
 designed fallback, not a degraded mode — see "Offline is the default" below.
@@ -18,6 +18,8 @@ functions/                     Cloud Functions (TypeScript, Node 22, 2nd gen)
   src/callable/syncProfile.ts  reconciles a device into the record
   src/callable/runs.ts         startRun ticket + validated submitRun
   src/callable/shop.ts         purchaseCosmetic / equipCosmetic
+  src/callable/leaderboard.ts  top-N plus the caller's own rank
+  src/domain/leaderboards/     board ids and best-entry writes
   src/domain/runs/validate.ts  Tier 1 plausibility + coin award
   src/domain/economy/          server-held catalogue prices
   src/domain/players/model.ts  authoritative player document
@@ -47,7 +49,7 @@ firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 | 4 — Cloud save + migration | Done |
 | 5 — Server-authoritative economy | Done |
 | 6 — Run submission + anti-cheat | Done (Tier 1 + ticket) |
-| 7 — Leaderboards + daily | Not started |
+| 7 — Leaderboards | Done (daily challenge still to do) |
 | 8–12 | Not started |
 
 **The wallet is now server-owned when a backend is configured.** `submitRun`
@@ -113,6 +115,11 @@ document in Firestore under `players/`. Reloading reuses the same uid.
 - A local wallet forged to 500,000 is replaced by the server's balance
 - Buying EMBER while claiming `price: 1` charges the real 150 (600 → 450)
 - Equipping an unowned item is refused
+- Only `VERIFIED` runs rank: an offline run scored, paid 990 coins and
+  stayed off the board
+- One entry per player, their best: improving 5000 → 20000 moved them to #1
+  without growing the board
+- Ranks and "you" highlighting correct; weekly board keys to the Monday
 - Production build with a `demo-*` config makes **no** network requests
 - No console errors; no Firebase requests at all when unconfigured
 
@@ -201,8 +208,26 @@ Bounds are deliberately generous: a false reject costs a real player their
 run and their coins, a false accept costs a leaderboard slot. Ties go to the
 player.
 
-## Next: Phase 7 — leaderboards + daily
+## Leaderboards
 
-Runs are now validated and recorded, which is the prerequisite. Only
-`VERIFIED` runs should reach competitive boards; `UNVERIFIED` ones (started
-offline) belong on a separate board or none.
+Two boards: `global_alltime` and a Monday-anchored `global_weekly_YYYYMMDD`.
+One entry per player per board, holding their best — a board ranks people,
+not attempts, and keeping every run would let one player fill the top ten.
+
+**Only `VERIFIED` runs rank.** A run started offline has no server ticket, so
+it cannot be told apart from a fabricated one. It still earns coins, records
+and stats; it just does not sit next to runs that can be checked. The player
+sees their score either way.
+
+The caller's own rank comes from a `count()` aggregation rather than reading
+every row above them, so it costs the same at rank 10 and rank 400,000 —
+"where am I" is the question that makes a board motivating, and a top-25 list
+alone cannot answer it.
+
+## Next: daily challenge
+
+The remaining half of Phase 7, and the strongest retention feature left. It
+needs a gameplay change rather than just a backend one: `LevelDirector` must
+accept a server-supplied seed so everyone plays the identical run, plus
+one-attempt-per-day enforcement and a `daily_YYYYMMDD` board (the board id
+helper already exists).

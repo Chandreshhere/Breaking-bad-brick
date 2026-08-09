@@ -4,6 +4,7 @@ import { backendConfigured } from './FirebaseClient';
 import { Outbox } from './Outbox';
 import type {
   BootstrapResult,
+  LeaderboardPage,
   OutboxItem,
   PurchaseResult,
   RemoteProgressApi,
@@ -110,6 +111,11 @@ export class RemoteProgress implements RemoteProgressApi {
     const res = await this.api.submitRun(payload, runId);
     if (!res) this.enqueue('submitRun', payload);
     return res;
+  }
+
+  leaderboard(board: string, limit = 25): Promise<LeaderboardPage | null> {
+    if (!this.online) return Promise.resolve(null);
+    return this.api.leaderboard(board, limit);
   }
 
   purchase(kind: 'ball' | 'paddle', id: string): Promise<PurchaseResult | null> {

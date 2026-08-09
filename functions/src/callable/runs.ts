@@ -9,6 +9,12 @@ import { auditLog, auditWarn } from '../utils/logging';
 import { int, oneOf, str } from '../security/validation';
 import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
 import { validateRun, coinsForRun, type RunClaim } from '../domain/runs/validate';
+import {
+  ALLTIME_BOARD,
+  readBestScore,
+  weeklyBoardId,
+  writeBestEntry,
+} from '../domain/leaderboards/boards';
 
 const MODES = ['ENDLESS', 'DAILY'] as const;
 type Mode = (typeof MODES)[number];
@@ -93,8 +99,16 @@ export const submitRun = onCall(
       const ticketRef = col.runTickets().doc(runId);
       const playerRef = col.players().doc(uid);
 
+      const weeklyBoard = weeklyBoardId(new Date());
+
       const result = await col.players().firestore.runTransaction(async (tx) => {
-        const [ticketSnap, playerSnap] = await Promise.all([tx.get(ticketRef), tx.get(playerRef)]);
+        // ── every read first ────────────────────────────────────────────
+        const [ticketSnap, playerSnap, prevAlltime, prevWeekly] = await Promise.all([
+          tx.get(ticketRef),
+          tx.get(playerRef),
+          readBestScore(tx, ALLTIME_BOARD, uid),
+          readBestScore(tx, weeklyBoard, uid),
+        ]);
 
         // A missing ticket means the run started offline. That is allowed —
         // refusing it would make a tunnel cost the player their run — but the
@@ -110,7 +124,6 @@ export const submitRun = onCall(
           if (t.submitted) throw fail.badRequest('Run already submitted.');
           if (Date.now() > t.expiresAt) throw fail.badRequest('Run ticket expired.');
           verification = 'VERIFIED';
-          tx.update(ticketRef, { submitted: true });
         }
 
         const player = playerSnap.exists
@@ -130,7 +143,28 @@ export const submitRun = onCall(
         next.wallet.coins += coins;
         next.wallet.lifetimeCoinsEarned += coins;
         next.updatedAt = Date.now();
+
+        // ── writes from here ────────────────────────────────────────────
+        if (verification === 'VERIFIED') tx.update(ticketRef, { submitted: true });
         tx.set(playerRef, next);
+
+        // Only a ticketed run ranks. An offline run still counts for coins,
+        // records and stats — it just cannot be told apart from a fabricated
+        // one, so it does not get to sit next to runs that can.
+        let ranked = false;
+        if (verification === 'VERIFIED' && claim.score > 0) {
+          const entry = {
+            uid,
+            displayName: next.displayName,
+            country: next.country,
+            score: claim.score,
+            levelReached: claim.levelReached,
+            runId,
+          };
+          const a = writeBestEntry(tx, ALLTIME_BOARD, entry, prevAlltime);
+          const w = writeBestEntry(tx, weeklyBoard, entry, prevWeekly);
+          ranked = a || w;
+        }
 
         tx.set(col.runs().doc(runId), {
           runId,
@@ -140,7 +174,7 @@ export const submitRun = onCall(
           validation: { status: verification },
         });
 
-        return { player: next, coinsAwarded: coins, verification };
+        return { player: next, coinsAwarded: coins, verification, ranked };
       });
 
       auditLog('run_accepted', uid, {
@@ -153,6 +187,7 @@ export const submitRun = onCall(
       return {
         accepted: true,
         verification: result.verification,
+        ranked: result.ranked,
         coinsAwarded: result.coinsAwarded,
         player: result.player,
       };

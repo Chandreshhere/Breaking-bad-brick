@@ -21,7 +21,11 @@ import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
 import { RemoteProgress } from '../backend/RemoteProgress';
-import type { SubmitRunResult, SyncProfileResult } from '../backend/BackendTypes';
+import type {
+  LeaderboardPage,
+  SubmitRunResult,
+  SyncProfileResult,
+} from '../backend/BackendTypes';
 import { PlaceholderRewardedAd, type RewardedAdProvider } from '../game/Ads';
 import { BossCharacter } from '../game/BossCharacter';
 import { applyBallSkin, applyPaddleSkin, BALL_SKINS, PADDLE_SKINS } from '../game/Cosmetics';
@@ -382,6 +386,8 @@ export class Experience {
       // and folded this device's history in. Flipping earlier would show a
       // zero balance to a player who had coins a moment ago.
       this.progress.serverAuthoritative = true;
+      this.loop.onOpenLeaderboard = (onBack): void =>
+        this.openLeaderboard('global_alltime', onBack);
       if (synced) this.adoptRemoteProfile(synced);
       this.loop.refreshIntro();
     } catch (err) {
@@ -464,6 +470,37 @@ export class Experience {
         this.audio.click();
         onBack();
       },
+    });
+  }
+
+  /**
+   * Leaderboard. Painted immediately in its loading state and repainted when
+   * the page arrives, so a slow network shows progress instead of a freeze —
+   * and an unreachable one says so rather than showing an empty board, which
+   * would read as "nobody has ever played".
+   */
+  openLeaderboard(tab: 'global_alltime' | 'weekly', onBack: () => void): void {
+    const paint = (
+      state: 'loading' | 'ready' | 'offline',
+      page: LeaderboardPage | null
+    ): void => {
+      this.screens.showLeaderboard({
+        tab,
+        state,
+        rows: page?.rows ?? [],
+        me: page?.me ? { rank: page.me.rank, score: page.me.score } : null,
+        total: page?.total ?? 0,
+        onTab: (next): void => this.openLeaderboard(next, onBack),
+        onBack: (): void => {
+          this.audio.click();
+          onBack();
+        },
+      });
+    };
+
+    paint('loading', null);
+    void this.remote.leaderboard(tab, 25).then((page) => {
+      paint(page ? 'ready' : 'offline', page);
     });
   }
 

@@ -12,3 +12,4 @@ export { bootstrap } from './callable/bootstrap';
 export { syncProfile } from './callable/syncProfile';
 export { startRun, submitRun } from './callable/runs';
 export { purchaseCosmetic, equipCosmetic } from './callable/shop';
+export { getLeaderboard } from './callable/leaderboard';
