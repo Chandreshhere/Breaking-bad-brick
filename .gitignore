@@ -11,3 +11,7 @@ functions/node_modules
 # firebase emulator logs
 *-debug.log
 .vercel
+
+# Firebase native config carries project ids; keep it out of a public repo
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist

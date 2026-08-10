@@ -89,6 +89,26 @@ ad finished; coins arrive when AdMob calls the `admobSsv` function.
 
 ---
 
+## Firebase native config
+
+`android/app/google-services.json` — **module level, not `android/`**.
+Capacitor's generated `app/build.gradle` applies the Google Services plugin
+only if the file is sitting next to it, and silently logs a note if it is
+not, so a misplaced file looks like nothing happened.
+
+It is **gitignored**. It carries project identifiers and belongs in your
+deploy environment, not a public repo. Anyone cloning this needs to download
+their own from the Firebase console.
+
+iOS needs the equivalent `GoogleService-Info.plist` once an iOS app is added
+to the Firebase project.
+
+Firebase Analytics is included via the BoM. It auto-collects sessions and
+retention with no code — that is what fills DAU and D1 in the console.
+Custom events will go through a Capacitor plugin rather than the web SDK, so
+they are attributed to the app instead of counting as web traffic from a
+WebView.
+
 ## Before a store release
 
 - [ ] `appId` is `com.breakingbadbrick.game`. Change it now if you want

@@ -1,7 +1,7 @@
 {
   "projects": {
-    "default": "bbb-dev",
-    "dev": "bbb-dev",
+    "default": "breaking-bad-bricks",
+    "dev": "breaking-bad-bricks",
     "staging": "bbb-staging",
     "prod": "bbb-prod"
   }
