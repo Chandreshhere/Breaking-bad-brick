@@ -35,7 +35,10 @@ const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 /** Google rotates these; cache for a day, refetch on an unknown key id. */
 async function loadKeys(force = false): Promise<Map<string, string>> {
   if (!force && keyCache && Date.now() - keyCache.at < KEY_TTL_MS) return keyCache.keys;
-  const res = await fetch(VERIFIER_KEYS_URL);
+  // Bounded explicitly: an unanswered fetch would otherwise pin the instance
+  // for the function's whole timeout while AdMob waits on a callback it will
+  // retry anyway.
+  const res = await fetch(VERIFIER_KEYS_URL, { signal: AbortSignal.timeout(5000) });
   const json = (await res.json()) as { keys: VerifierKey[] };
   const keys = new Map<string, string>();
   for (const k of json.keys) keys.set(String(k.keyId), k.pem);
@@ -131,9 +134,18 @@ export const admobSsv = onRequest(
       return;
     }
 
-    const ok = await verifySignature(rawQuery, signature, keyId, async (id, force) =>
-      (await loadKeys(force)).get(id)
-    );
+    let ok = false;
+    try {
+      ok = await verifySignature(rawQuery, signature, keyId, async (id, force) =>
+        (await loadKeys(force)).get(id)
+      );
+    } catch (err) {
+      // Key fetch failed or timed out. 500 so AdMob retries — this callback
+      // may well be legitimate, and dropping it silently loses a real reward.
+      auditWarn('ssv_keys_unavailable', uid, { transactionId, err: String(err) });
+      res.status(500).send('error');
+      return;
+    }
     if (!ok) {
       auditWarn('ssv_bad_signature', uid, { transactionId, keyId });
       // 200 so AdMob does not retry a callback that can never verify.

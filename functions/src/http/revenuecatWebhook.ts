@@ -1,8 +1,27 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
+import { timingSafeEqual } from 'crypto';
 import { col } from '../utils/firestore';
 import { auditLog, auditWarn } from '../utils/logging';
 import { FieldValue } from 'firebase-admin/firestore';
+
+/**
+ * Constant-time secret comparison.
+ *
+ * `!==` on a string bails at the first differing byte, so how long the
+ * rejection takes leaks how much of the prefix was right — enough, given
+ * unlimited attempts against a public endpoint, to recover the secret a byte
+ * at a time. The length check outside the comparison is unavoidable
+ * (timingSafeEqual throws on a length mismatch) and harmless: the length of
+ * the secret is not the secret.
+ */
+function secretMatches(provided: string | undefined, expected: string): boolean {
+  if (!provided || !expected) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 /**
  * RevenueCat webhook — the authority on what a player has actually bought.
@@ -33,8 +52,7 @@ export const revenuecatWebhook = onRequest(
       res.status(405).send('method not allowed');
       return;
     }
-    const expected = REVENUECAT_SECRET.value();
-    if (!expected || req.header('Authorization') !== expected) {
+    if (!secretMatches(req.header('Authorization'), REVENUECAT_SECRET.value())) {
       auditWarn('revenuecat_bad_auth', 'unknown', {});
       res.status(401).send('unauthorized');
       return;

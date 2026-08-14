@@ -6,7 +6,8 @@ import { withIdempotency } from '../security/idempotency';
 import { fail } from '../utils/errors';
 import { auditLog } from '../utils/logging';
 import { oneOf, str } from '../security/validation';
-import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
+import { type PlayerDoc } from '../domain/players/model';
+import { playerFromSnapshot } from '../domain/players/repo';
 import { loadCatalogue, priceOf } from '../domain/economy/catalogue';
 
 const KINDS = ['ball', 'paddle'] as const;
@@ -23,7 +24,7 @@ export const purchaseCosmetic = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'purchaseCosmetic');
     await rateLimit(uid, 'purchase', 60, 3600);
 
     const d = (req.data ?? {}) as Record<string, unknown>;
@@ -41,9 +42,7 @@ export const purchaseCosmetic = onCall(
       const ref = col.players().doc(uid);
       const result = await col.players().firestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
-        const player = snap.exists
-          ? (snap.data() as PlayerDoc)
-          : defaultPlayer(uid, Date.now(), null);
+        const player = playerFromSnapshot(snap, uid);
 
         const owned = kind === 'ball' ? player.inventory.ownedBalls : player.inventory.ownedPaddles;
         if (owned.includes(id)) {
@@ -53,7 +52,7 @@ export const purchaseCosmetic = onCall(
           return { ok: false as const, reason: 'INSUFFICIENT_FUNDS', player };
         }
 
-        const next: PlayerDoc = JSON.parse(JSON.stringify(player));
+        const next: PlayerDoc = structuredClone(player);
         next.wallet.coins -= price;
         if (kind === 'ball') {
           next.inventory.ownedBalls.push(id);
@@ -78,7 +77,7 @@ export const equipCosmetic = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'equipCosmetic');
     await rateLimit(uid, 'equip', 200, 3600);
 
     const d = (req.data ?? {}) as Record<string, unknown>;
@@ -89,10 +88,10 @@ export const equipCosmetic = onCall(
     const player = await col.players().firestore.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw fail.notFound('Player');
-      const p = snap.data() as PlayerDoc;
+      const p = playerFromSnapshot(snap, uid);
       const owned = kind === 'ball' ? p.inventory.ownedBalls : p.inventory.ownedPaddles;
       if (!owned.includes(id)) throw fail.denied('Item not owned.');
-      const next: PlayerDoc = JSON.parse(JSON.stringify(p));
+      const next: PlayerDoc = structuredClone(p);
       if (kind === 'ball') next.inventory.equippedBall = id;
       else next.inventory.equippedPaddle = id;
       next.updatedAt = Date.now();
