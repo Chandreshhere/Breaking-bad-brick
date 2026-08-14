@@ -46,7 +46,7 @@ src/backend/                   the only client code that knows Firebase exists
   BackendTypes.ts              shared shapes, no Firebase imports
 
 firestore.rules                default deny; clients never write
-firestore.indexes.json         leaderboard + run history indexes
+firestore.indexes.json         TTL policies (no composites — see below)
 firebase.json / .firebaserc    emulators and the dev/staging/prod projects
 ```
 
@@ -215,6 +215,25 @@ to players and point the game at a project that does not exist.
 Apple/Android/Flutter/Unity, not browser JS. Store builds can use Crashlytics
 for native crashes; the web bundle needs a browser SDK.
 
+**Nothing accumulates without a TTL.** `runTickets` and the idempotency /
+rate-limit records under `idempotency/{uid}/keys` both write a `ttlAt`
+Timestamp and `firestore.indexes.json` declares the policies. TTL only fires
+on a Timestamp — a millisecond number is ignored silently, which is the worst
+kind of ignored. `adRewards` is deliberately excluded: those documents *are*
+the replay protection for ad payouts, so expiring them would let an old
+transaction id be claimed again.
+
+**No composite indexes.** Every query filters or orders on one field, which
+Firestore indexes automatically in both directions. The two composites that
+used to be declared (`entries`: score+achievedAt, `runs`: uid+submittedAt)
+matched no query the code issues and were maintained on every write for
+nothing.
+
+**Deletion follows `rankedBoards`, not a scan.** The player document records
+which boards it has an entry on. The alternative — listing every board and
+attempting a delete on each — grows by one board per day for the life of the
+game, so it gets slower every day and eventually times out mid-deletion.
+
 ---
 
 ## Anti-cheat, honestly
@@ -232,6 +251,26 @@ Bounds are deliberately generous: a false reject costs a real player their
 run and their coins, a false accept costs a leaderboard slot. Ties go to the
 player.
 
+**Unverified runs are metered, not trusted.** Accepting a run with no ticket
+is what keeps a tunnel from costing someone their game — but an unticketed
+submission is also exactly what a forgery looks like, because the client picks
+its own run id and every field is a claimed number. A self-consistent claim
+that passes Tier 1 (`bricksDestroyed: 200, score: 1_000_000,
+durationSeconds: 25`) used to pay the full 10,000-coin per-run cap, which at
+the submit rate limit was 900,000 coins an hour against a catalogue that costs
+4,150. So unverified earnings now draw on a budget:
+
+| | per run | per UTC day |
+|:--|--:|--:|
+| Verified (ticketed) | 10,000 | unlimited |
+| Unverified (offline) | 500 | 1,500 |
+
+The budget lives on the player document (`wallet.unverifiedDay` /
+`unverifiedCoinsToday`) so it is read and spent inside the same transaction
+that pays out — two concurrent submissions cannot both see a full allowance.
+A real offline session is still paid; a farm gets a day's pocket change.
+Raising these numbers re-opens the hole in proportion.
+
 ## Leaderboards
 
 Two boards: `global_alltime` and a Monday-anchored `global_weekly_YYYYMMDD`.
@@ -239,9 +278,14 @@ One entry per player per board, holding their best — a board ranks people,
 not attempts, and keeping every run would let one player fill the top ten.
 
 **Only `VERIFIED` runs rank.** A run started offline has no server ticket, so
-it cannot be told apart from a fabricated one. It still earns coins, records
-and stats; it just does not sit next to runs that can be checked. The player
-sees their score either way.
+it cannot be told apart from a fabricated one. It still earns records, stats
+and (metered — see "Anti-cheat" above) coins; it just does not sit next to
+runs that can be checked. The player sees their score either way.
+
+Which daily board a run belongs to comes from **the ticket**, not the clock at
+submit time. Start at 23:59 UTC and finish at 00:01 and the run is yesterday's;
+reading today's board for the previous best would compare against the wrong
+one and either discard a winning entry or overwrite a better one.
 
 The caller's own rank comes from a `count()` aggregation rather than reading
 every row above them, so it costs the same at rank 10 and rank 400,000 —
@@ -332,8 +376,9 @@ anonymous one.
 - [ ] Enable Anonymous auth + Firestore in each
 - [ ] `npm run deploy:rules:dev` then `deploy:functions:dev`
 - [ ] Set a **billing budget alert** (Functions 2nd gen needs Blaze)
-- [ ] Register App Check, watch metrics, then enable enforcement
-      (`checkAppAttestation(req, true)`)
+- [ ] Register App Check, watch for `appcheck_missing` in Cloud Logging, then
+      enforce per-endpoint (`checkAppAttestation(req, 'submitRun', true)`),
+      starting with the ones that move currency
 - [ ] Publish a privacy policy URL and link it from the consent screen
 - [ ] Add Sentry for browser errors (Crashlytics is native-only)
 - [ ] Capacitor wrap, then AdMob + UMP + ATT

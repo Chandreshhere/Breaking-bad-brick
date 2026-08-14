@@ -1,9 +1,11 @@
 import { onCall, type CallableRequest } from 'firebase-functions/v2/https';
 import { col } from '../utils/firestore';
 import { requireUid, checkAppAttestation } from '../security/auth';
-import { auditLog } from '../utils/logging';
-import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
+import { type PlayerDoc } from '../domain/players/model';
+import { loadOrCreatePlayer } from '../domain/players/repo';
 import { dailyForDate, readAttempt } from '../domain/dailies/daily';
+import { APP_STATUS, DEFAULT_CONFIG, type AppStatus, type Tunables } from '../domain/config/tunables';
+import { MISSIONS } from '../domain/missions/missions';
 
 /**
  * The single call the client makes on launch.
@@ -15,25 +17,6 @@ import { dailyForDate, readAttempt } from '../domain/dailies/daily';
  * runs offline — so this must stay a single, cheap read set.
  */
 
-/** Server-owned tunables. Remote Config supersedes these later. */
-const DEFAULT_CONFIG = {
-  dropChance: 0.22,
-  coinsPer100Points: 1,
-  livesPerRun: 3,
-  adsEnabled: true,
-  interstitialEveryNRuns: 3,
-  continuesPerRun: 1,
-  dailyEnabled: true,
-  leaderboardEnabled: false,
-  maxRunsPerHour: 60,
-};
-
-const APP_STATUS = {
-  minVersion: '1.0.0',
-  maintenance: false,
-  message: null as string | null,
-};
-
 export interface DailyStatus {
   date: string;
   seed: number;
@@ -43,51 +26,61 @@ export interface DailyStatus {
   score: number;
 }
 
-export interface BootstrapResult {
-  player: PlayerDoc;
-  config: typeof DEFAULT_CONFIG;
-  daily: DailyStatus | null;
-  missions: unknown[];
-  catalogue: unknown | null;
-  app: typeof APP_STATUS;
-  serverTime: number;
+/** A mission definition plus this player's standing on it. */
+export interface MissionStatus {
+  id: string;
+  text: string;
+  metric: string;
+  target: number;
+  reward: number;
+  value: number;
+  claimed: boolean;
 }
 
-/** Reads the player, creating a default document on first launch. */
-async function loadOrCreatePlayer(uid: string, country: string | null): Promise<PlayerDoc> {
-  const ref = col.players().doc(uid);
-  const snap = await ref.get();
-  if (snap.exists) return snap.data() as PlayerDoc;
-
-  const fresh = defaultPlayer(uid, Date.now(), country);
-  // create() rather than set(): if two cold starts race on a brand-new
-  // anonymous uid, exactly one wins and the loser re-reads the winner's doc
-  // instead of clobbering it.
-  try {
-    await ref.create(fresh);
-    auditLog('player_created', uid, { country });
-    return fresh;
-  } catch {
-    const retry = await ref.get();
-    return (retry.data() as PlayerDoc) ?? fresh;
-  }
+export interface BootstrapResult {
+  player: PlayerDoc;
+  config: Tunables;
+  daily: DailyStatus | null;
+  missions: MissionStatus[];
+  catalogue: unknown | null;
+  app: AppStatus;
+  serverTime: number;
 }
 
 export const bootstrap = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest): Promise<BootstrapResult> => {
     const uid = requireUid(req);
-    checkAppAttestation(req); // monitor-only for now
+    checkAppAttestation(req, 'bootstrap');
 
     const country = (req.rawRequest.headers['x-appengine-country'] as string) ?? null;
     const player = await loadOrCreatePlayer(uid, country);
 
     const spec = dailyForDate(new Date());
-    const [attempt, missionsSnap, catalogueSnap] = await Promise.all([
+    const [attempt, progressSnap, catalogueSnap] = await Promise.all([
       readAttempt(uid, spec.date),
-      col.missions().where('activeTo', '>', Date.now()).limit(3).get(),
+      // The player's own progress. The *definitions* come from MISSIONS in
+      // code — this used to query a top-level `missions` collection that
+      // nothing has ever written, so every launch paid for a query that
+      // returned an empty list and the client rendered no missions at all
+      // while `claimMission` happily paid out against the code-side table.
+      col.players().doc(uid).collection('missions').get(),
       col.catalogue().doc('cosmetics').get(),
     ]);
+
+    const progress = new Map(progressSnap.docs.map((d) => [d.id, d.data()]));
+    const missions: MissionStatus[] = MISSIONS.map((def) => {
+      const p = progress.get(def.id);
+      return {
+        id: def.id,
+        text: def.text,
+        metric: def.metric,
+        target: def.target,
+        reward: def.reward,
+        value: (p?.['value'] as number | undefined) ?? 0,
+        claimed: (p?.['claimed'] as boolean | undefined) ?? false,
+      };
+    });
 
     return {
       player,
@@ -99,7 +92,7 @@ export const bootstrap = onCall(
         played: attempt?.submitted ?? false,
         score: attempt?.score ?? 0,
       },
-      missions: missionsSnap.docs.map((d) => d.data()),
+      missions,
       catalogue: catalogueSnap.exists ? catalogueSnap.data() : null,
       app: APP_STATUS,
       serverTime: Date.now(),

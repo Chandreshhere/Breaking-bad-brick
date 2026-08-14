@@ -14,6 +14,9 @@ import type {
   SyncProfileResult,
 } from './BackendTypes';
 
+/** Attempts before a queued mutation is given up on and dropped. */
+const MAX_RETRIES = 8;
+
 /**
  * The single seam between the game and the backend.
  *
@@ -185,24 +188,40 @@ export class RemoteProgress implements RemoteProgressApi {
         // Only the ops whose endpoints exist are drained; anything else
         // waits rather than being dropped, so a queue written by a newer
         // client is never destroyed by an older one.
+        let done = false;
         if (item.op === 'syncProfile') {
           const res = await this.api.syncProfile(item.payload);
           if (res) {
-            await this.outbox.remove(item.id);
+            done = true;
             this.onRemoteProfile?.(res);
           }
         } else if (item.op === 'consent') {
           const c = item.payload as { ads: boolean; analytics: boolean };
-          if (await this.api.consent(c.ads, c.analytics)) await this.outbox.remove(item.id);
+          done = (await this.api.consent(c.ads, c.analytics)) !== null;
         } else if (item.op === 'submitRun') {
           const run = item.payload as RunSubmission;
           const res = await this.api.submitRun(run, run.runId);
           // A rejected run is removed too: retrying a submission the server
           // has already judged invalid would loop forever.
           if (res !== null) {
-            await this.outbox.remove(item.id);
+            done = true;
             this.onRemoteRun?.(res);
           }
+        } else {
+          continue; // op this build has no endpoint for — leave it queued
+        }
+
+        if (done) {
+          await this.outbox.remove(item.id);
+        } else if (item.retries + 1 >= MAX_RETRIES) {
+          // An item the server will never accept — a malformed payload, or a
+          // run rejected in a way that returns no result — would otherwise be
+          // retried on every `online` event for the life of the install,
+          // blocking nothing but wasting a call each time forever.
+          console.warn(`[backend] dropping ${item.op} after ${MAX_RETRIES} attempts`);
+          await this.outbox.remove(item.id);
+        } else {
+          await this.outbox.bumpRetries(item.id);
         }
       }
     } finally {

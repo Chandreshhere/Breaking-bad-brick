@@ -1,6 +1,7 @@
 import { onCall, type CallableRequest } from 'firebase-functions/v2/https';
 import { col } from '../utils/firestore';
 import { requireUid } from '../security/auth';
+import { rateLimit } from '../security/rateLimit';
 import { fail } from '../utils/errors';
 import { auditLog } from '../utils/logging';
 import { str } from '../security/validation';
@@ -18,6 +19,7 @@ export const claimMission = onCall(
   { region: 'us-central1', maxInstances: 10 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
+    await rateLimit(uid, 'claimMission', 60, 3600);
     const id = str((req.data as Record<string, unknown>)?.['id'], 'id', 48);
     const def = MISSIONS.find((m) => m.id === id);
     if (!def) throw fail.notFound('Mission');
