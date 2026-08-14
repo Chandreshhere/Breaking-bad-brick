@@ -29,7 +29,6 @@ export interface RemotePlayer {
     runs: number;
     totalBricks: number;
     totalPlaySeconds: number;
-    bestPerWorld: Record<string, number>;
   };
   wallet: { coins: number; lifetimeCoinsEarned: number };
   inventory: {
@@ -58,11 +57,22 @@ export interface AppStatus {
   message: string | null;
 }
 
+/** A mission definition plus this player's standing on it. */
+export interface MissionStatus {
+  id: string;
+  text: string;
+  metric: string;
+  target: number;
+  reward: number;
+  value: number;
+  claimed: boolean;
+}
+
 export interface BootstrapResult {
   player: RemotePlayer;
   config: RemoteConfigValues;
   daily: DailyStatus | null;
-  missions: unknown[];
+  missions: MissionStatus[];
   catalogue: unknown | null;
   app: AppStatus;
   serverTime: number;

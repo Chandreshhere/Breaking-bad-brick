@@ -53,9 +53,13 @@ export const deletePlayer = onCall(
   { region: 'us-central1', maxInstances: 10 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
+    // The most expensive endpoint in the codebase, and it was the only
+    // mutating one with no limit at all.
+    await rateLimit(uid, 'delete', 5, 3600);
     auditLog('account_deletion_requested', uid);
 
     const playerRef = col.players().doc(uid);
+    const player = (await playerRef.get()).data() as { rankedBoards?: string[] } | undefined;
 
     // Subcollections first — deleting the parent document does not remove
     // them, and orphaned subcollections are still personal data.
@@ -69,10 +73,22 @@ export const deletePlayer = onCall(
     // Leaderboard identity. The entry is removed outright rather than
     // anonymised: a "deleted user" row still links a score to a person who
     // asked to be forgotten.
-    const boards = await db().collection('leaderboards').listDocuments();
-    for (const board of boards) {
-      await board.collection('entries').doc(uid).delete().catch(() => undefined);
-    }
+    //
+    // Only the boards this player actually reached. Listing every board and
+    // attempting a delete on each grows by one board per day for the life of
+    // the game — a year in that is 365 sequential deletes for a player who
+    // ranked on three of them, and eventually the callable times out and the
+    // deletion never completes. `rankedBoards` is recorded by submitRun;
+    // accounts predating it fall back to the scan, which is correct for them
+    // because there are few and the board count was small.
+    const boards = player?.rankedBoards?.length
+      ? player.rankedBoards.map((b) => db().collection('leaderboards').doc(b))
+      : await db().collection('leaderboards').listDocuments();
+    await Promise.all(
+      boards.map((board) =>
+        board.collection('entries').doc(uid).delete().catch(() => undefined)
+      )
+    );
 
     // Run history.
     for (;;) {

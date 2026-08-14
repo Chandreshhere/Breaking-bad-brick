@@ -5,7 +5,8 @@ import { rateLimit } from '../security/rateLimit';
 import { fail } from '../utils/errors';
 import { auditLog, auditWarn } from '../utils/logging';
 import { int, str } from '../security/validation';
-import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
+import { type PlayerDoc } from '../domain/players/model';
+import { playerFromSnapshot } from '../domain/players/repo';
 import { mergeClientProfile, type ClientProfileSnapshot } from '../domain/players/merge';
 
 /**
@@ -51,7 +52,7 @@ export const syncProfile = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest): Promise<{ player: PlayerDoc; rejectedItems: string[] }> => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'syncProfile');
     await rateLimit(uid, 'syncProfile', 60, 300); // 60 per 5 minutes
 
     const snapshot = parseSnapshot((req.data as Record<string, unknown>)?.['profile']);
@@ -61,9 +62,7 @@ export const syncProfile = onCall(
       .players()
       .firestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
-        const server = snap.exists
-          ? (snap.data() as PlayerDoc)
-          : defaultPlayer(uid, Date.now(), null);
+        const server = playerFromSnapshot(snap, uid);
 
         // The very first sync for this player imports whatever they had
         // before the backend existed. Never again — otherwise clearing

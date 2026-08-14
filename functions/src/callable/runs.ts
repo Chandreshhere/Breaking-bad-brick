@@ -7,8 +7,14 @@ import { withIdempotency } from '../security/idempotency';
 import { fail } from '../utils/errors';
 import { auditLog, auditWarn } from '../utils/logging';
 import { int, oneOf, str } from '../security/validation';
-import { defaultPlayer, type PlayerDoc } from '../domain/players/model';
-import { validateRun, coinsForRun, type RunClaim } from '../domain/runs/validate';
+import { MAX_TRACKED_BOARDS, type PlayerDoc } from '../domain/players/model';
+import { playerFromSnapshot } from '../domain/players/repo';
+import {
+  validateRun,
+  coinsForRun,
+  UNVERIFIED_COIN_CAP_PER_DAY,
+  type RunClaim,
+} from '../domain/runs/validate';
 import {
   ALLTIME_BOARD,
   dailyBoardId,
@@ -16,8 +22,10 @@ import {
   weeklyBoardId,
   writeBestEntry,
 } from '../domain/leaderboards/boards';
-import { attemptRef, dailyForDate, readAttempt } from '../domain/dailies/daily';
+import { attemptRef, dailyForDate, dateKey, readAttempt } from '../domain/dailies/daily';
 import { MISSIONS, runValueFor, worldsUnlockedAt } from '../domain/missions/missions';
+import { DEFAULT_CONFIG } from '../domain/config/tunables';
+import { TTL, ttlAt } from '../utils/ttl';
 
 const MODES = ['ENDLESS', 'DAILY'] as const;
 type Mode = (typeof MODES)[number];
@@ -39,7 +47,7 @@ export const startRun = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'startRun');
     await rateLimit(uid, 'startRun', 120, 3600);
 
     const data = (req.data ?? {}) as Record<string, unknown>;
@@ -74,6 +82,10 @@ export const startRun = onCall(
       dailyDate,
       issuedAt: now,
       expiresAt: now + TICKET_TTL_MS,
+      // Swept by Firestore's TTL policy well after the ticket stops being
+      // usable. Without one the collection keeps a document per run ever
+      // started, forever.
+      ttlAt: ttlAt(now + TTL.RUN_TICKET_MS),
       submitted: false,
     });
 
@@ -93,7 +105,7 @@ export const submitRun = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'submitRun');
     await rateLimit(uid, 'submitRun', 90, 3600);
 
     const d = (req.data ?? {}) as Record<string, unknown>;
@@ -120,17 +132,21 @@ export const submitRun = onCall(
       const playerRef = col.players().doc(uid);
 
       const weeklyBoard = weeklyBoardId(new Date());
-      const todayBoard = dailyBoardId(new Date());
+
+      const missionRefs = MISSIONS.map((def) =>
+        col.players().doc(uid).collection('missions').doc(def.id)
+      );
 
       const result = await col.players().firestore.runTransaction(async (tx) => {
         // ── every read first ────────────────────────────────────────────
-        const [ticketSnap, playerSnap, prevAlltime, prevWeekly, prevDaily] = await Promise.all([
-          tx.get(ticketRef),
-          tx.get(playerRef),
-          readBestScore(tx, ALLTIME_BOARD, uid),
-          readBestScore(tx, weeklyBoard, uid),
-          readBestScore(tx, todayBoard, uid),
-        ]);
+        const [ticketSnap, playerSnap, prevAlltime, prevWeekly, missionSnaps] =
+          await Promise.all([
+            tx.get(ticketRef),
+            tx.get(playerRef),
+            readBestScore(tx, ALLTIME_BOARD, uid),
+            readBestScore(tx, weeklyBoard, uid),
+            Promise.all(missionRefs.map((ref) => tx.get(ref))),
+          ]);
 
         // A missing ticket means the run started offline. That is allowed —
         // refusing it would make a tunnel cost the player their run — but the
@@ -154,13 +170,43 @@ export const submitRun = onCall(
           verification = 'VERIFIED';
         }
 
-        const player = playerSnap.exists
-          ? (playerSnap.data() as PlayerDoc)
-          : defaultPlayer(uid, Date.now(), null);
+        // Which daily board this run belongs to comes from the ticket, not
+        // from the clock at submit time: a run started at 23:59 UTC and
+        // submitted at 00:01 is yesterday's, and reading today's board for
+        // the previous best would either discard a winning entry or overwrite
+        // a better one. Read after the ticket and only when it is a daily —
+        // an endless run never consults this board. Still a read, and still
+        // before the first write, which is all a transaction requires.
+        const dailyBoard = dailyDate ? `daily_${dailyDate}` : dailyBoardId(new Date());
+        const prevDaily =
+          runMode === 'DAILY' && dailyDate ? await readBestScore(tx, dailyBoard, uid) : -1;
 
-        const coins = coinsForRun(claim.score, 1);
+        const player = playerFromSnapshot(playerSnap, uid);
 
-        const next: PlayerDoc = JSON.parse(JSON.stringify(player));
+        const verified = verification === 'VERIFIED';
+        let coins = coinsForRun(claim.score, DEFAULT_CONFIG.coinsPer100Points, verified);
+
+        const next: PlayerDoc = structuredClone(player);
+
+        // An unverified run draws from a daily budget rather than paying out
+        // freely — see UNVERIFIED_COIN_CAP_PER_DAY. The budget lives on the
+        // player document so it is read and spent inside this transaction,
+        // which is the only way two concurrent submissions cannot both see a
+        // full allowance.
+        if (!verified) {
+          const today = dateKey(new Date());
+          if (next.wallet.unverifiedDay !== today) {
+            next.wallet.unverifiedDay = today;
+            next.wallet.unverifiedCoinsToday = 0;
+          }
+          const remaining = Math.max(
+            0,
+            UNVERIFIED_COIN_CAP_PER_DAY - next.wallet.unverifiedCoinsToday
+          );
+          coins = Math.min(coins, remaining);
+          next.wallet.unverifiedCoinsToday += coins;
+        }
+
         next.stats.bestScore = Math.max(next.stats.bestScore, claim.score);
         next.stats.bestLevel = Math.max(next.stats.bestLevel, claim.levelReached);
         next.stats.bestCombo = Math.max(next.stats.bestCombo, claim.bestCombo);
@@ -177,7 +223,6 @@ export const submitRun = onCall(
 
         // ── writes from here ────────────────────────────────────────────
         if (verification === 'VERIFIED') tx.update(ticketRef, { submitted: true });
-        tx.set(playerRef, next);
 
         // Only a ticketed run ranks. An offline run still counts for coins,
         // records and stats — it just cannot be told apart from a fabricated
@@ -192,22 +237,38 @@ export const submitRun = onCall(
             levelReached: claim.levelReached,
             runId,
           };
+          // Remembered so deletion can find these entries again without
+          // walking every board in the database.
+          const rank = (board: string, previous: number): boolean => {
+            const wrote = writeBestEntry(tx, board, entry, previous);
+            if (wrote && !next.rankedBoards.includes(board)) {
+              next.rankedBoards.push(board);
+              if (next.rankedBoards.length > MAX_TRACKED_BOARDS) {
+                next.rankedBoards = next.rankedBoards.slice(-MAX_TRACKED_BOARDS);
+              }
+            }
+            return wrote;
+          };
+
           if (runMode === 'DAILY' && dailyDate) {
             // A daily score belongs only to its own board — mixing one run
             // on a fixed layout into the endless boards would compare
             // different games.
-            ranked = writeBestEntry(tx, `daily_${dailyDate}`, entry, prevDaily);
+            ranked = rank(dailyBoard, prevDaily);
             tx.set(
               attemptRef(uid, dailyDate),
               { date: dailyDate, submitted: true, score: claim.score },
               { merge: true }
             );
           } else {
-            const a = writeBestEntry(tx, ALLTIME_BOARD, entry, prevAlltime);
-            const w = writeBestEntry(tx, weeklyBoard, entry, prevWeekly);
+            const a = rank(ALLTIME_BOARD, prevAlltime);
+            const w = rank(weeklyBoard, prevWeekly);
             ranked = a || w;
           }
         }
+
+        // After the ranking block so `rankedBoards` lands in the same write.
+        tx.set(playerRef, next);
 
         tx.set(col.runs().doc(runId), {
           runId,
@@ -219,15 +280,22 @@ export const submitRun = onCall(
 
         // Mission progress is a high-water mark computed from the run, so a
         // client cannot assert completion. Claiming the reward is separate.
-        for (const def of MISSIONS) {
+        //
+        // Genuinely a maximum against the stored value: writing the run's own
+        // number would mean a bad run *undoes* progress, so a player who hit
+        // a 30 combo and then played a quiet round would watch the 25-combo
+        // mission fall back to incomplete.
+        MISSIONS.forEach((def, i) => {
           const value = runValueFor(def, claim);
-          if (value <= 0) continue;
+          if (value <= 0) return;
+          const prev = (missionSnaps[i]?.data()?.['value'] as number | undefined) ?? 0;
+          if (value <= prev) return;
           tx.set(
-            col.players().doc(uid).collection('missions').doc(def.id),
-            { id: def.id, value: Math.max(value, 0), target: def.target, updatedAt: Date.now() },
+            missionRefs[i]!,
+            { id: def.id, value, target: def.target, updatedAt: Date.now() },
             { merge: true }
           );
-        }
+        });
 
         return { player: next, coinsAwarded: coins, verification, ranked };
       });

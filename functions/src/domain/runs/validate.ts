@@ -79,12 +79,40 @@ export function validateRun(c: RunClaim): Verdict {
   return { ok: true };
 }
 
+/** Ceiling per run, so a validation gap can never mint an unbounded balance. */
+export const COIN_CAP_PER_RUN = 10_000;
+
+/**
+ * The same ceiling for a run the server could not verify, and a daily budget
+ * on top of it.
+ *
+ * This is the load-bearing limit in the whole economy. A run submitted
+ * without a server ticket is accepted — refusing it would cost a player in a
+ * tunnel their run — but it is also *exactly what a forged submission looks
+ * like*, because the client picks its own run id and every field is a claimed
+ * number. `validateRun` only checks the claim is self-consistent, and
+ * `{ bricksDestroyed: 200, score: 1_000_000, durationSeconds: 25 }` is
+ * perfectly self-consistent while paying the full per-run cap. At the
+ * submitRun rate limit that was 900,000 coins an hour against a catalogue
+ * costing 4,150.
+ *
+ * So unverified earnings are metered instead of trusted. A genuine offline
+ * session still gets paid; a farm gets a day's pocket change. Raising these
+ * numbers re-opens the hole in proportion — the fix that removes the need for
+ * them entirely is deterministic replay (PRODUCTION_SPEC Appendix C).
+ */
+export const UNVERIFIED_COIN_CAP_PER_RUN = 500;
+export const UNVERIFIED_COIN_CAP_PER_DAY = 1_500;
+
 /**
  * Coins for a finished run. Computed here and nowhere else — the client is
  * told the number, it never proposes one.
+ *
+ * The daily budget is applied by the caller, which is the only place that can
+ * read and write it atomically.
  */
-export function coinsForRun(score: number, coinsPer100: number): number {
+export function coinsForRun(score: number, coinsPer100: number, verified: boolean): number {
   const earned = Math.floor(score / 100) * coinsPer100;
-  // Ceiling per run, so a validation gap can never mint an unbounded balance.
-  return Math.max(0, Math.min(earned, 10_000));
+  const cap = verified ? COIN_CAP_PER_RUN : UNVERIFIED_COIN_CAP_PER_RUN;
+  return Math.max(0, Math.min(earned, cap));
 }

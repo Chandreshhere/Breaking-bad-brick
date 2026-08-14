@@ -56,6 +56,10 @@ function union(a: string[], b: string[], allowed: Set<string> | null): string[] 
   return [...out];
 }
 
+const SHAKE: PlayerSettings['screenShake'][] = ['FULL', 'REDUCED', 'OFF'];
+const RAIN: PlayerSettings['rainQuality'][] = ['LOW', 'MEDIUM', 'HIGH'];
+const GRAPHICS: PlayerSettings['graphics'][] = ['AUTO', 'LOW', 'MEDIUM', 'HIGH'];
+
 /**
  * Copies only known settings keys, and only when the value is of the right
  * shape. A blind spread would let a client write arbitrary fields into the
@@ -84,10 +88,6 @@ function mergeSettings(
   return out;
 }
 
-const SHAKE: PlayerSettings['screenShake'][] = ['FULL', 'REDUCED', 'OFF'];
-const RAIN: PlayerSettings['rainQuality'][] = ['LOW', 'MEDIUM', 'HIGH'];
-const GRAPHICS: PlayerSettings['graphics'][] = ['AUTO', 'LOW', 'MEDIUM', 'HIGH'];
-
 export interface MergeResult {
   player: PlayerDoc;
   changed: boolean;
@@ -99,7 +99,7 @@ export function mergeClientProfile(
   client: ClientProfileSnapshot,
   opts: { migrateLegacy: boolean }
 ): MergeResult {
-  const next: PlayerDoc = JSON.parse(JSON.stringify(server));
+  const next: PlayerDoc = structuredClone(server);
   const rejected: string[] = [];
 
   // ── Records: highest wins, whichever device set it ────────────────────

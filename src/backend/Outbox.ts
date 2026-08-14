@@ -55,6 +55,27 @@ export class Outbox {
     });
   }
 
+  /** Records one more failed attempt, so a poison item can be given up on. */
+  async bumpRetries(id: string): Promise<void> {
+    const db = await open();
+    if (!db) {
+      const item = this.memory.find((i) => i.id === id);
+      if (item) item.retries += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const req = store.get(id);
+      req.onsuccess = (): void => {
+        const item = req.result as OutboxItem | undefined;
+        if (item) store.put({ ...item, retries: item.retries + 1 });
+      };
+      tx.oncomplete = (): void => resolve();
+      tx.onerror = (): void => resolve();
+    });
+  }
+
   async remove(id: string): Promise<void> {
     const db = await open();
     if (!db) {

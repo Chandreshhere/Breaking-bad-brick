@@ -1,21 +1,17 @@
 {
-  "indexes": [
+  "indexes": [],
+  "fieldOverrides": [
     {
-      "collectionGroup": "entries",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "score", "order": "DESCENDING" },
-        { "fieldPath": "achievedAt", "order": "ASCENDING" }
-      ]
+      "collectionGroup": "runTickets",
+      "fieldPath": "ttlAt",
+      "ttl": true,
+      "indexes": []
     },
     {
-      "collectionGroup": "runs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "uid", "order": "ASCENDING" },
-        { "fieldPath": "submittedAt", "order": "DESCENDING" }
-      ]
+      "collectionGroup": "keys",
+      "fieldPath": "ttlAt",
+      "ttl": true,
+      "indexes": []
     }
-  ],
-  "fieldOverrides": []
+  ]
 }

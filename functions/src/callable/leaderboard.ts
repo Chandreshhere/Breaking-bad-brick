@@ -27,7 +27,7 @@ export const getLeaderboard = onCall(
   { region: 'us-central1', maxInstances: 20 },
   async (req: CallableRequest) => {
     const uid = requireUid(req);
-    checkAppAttestation(req);
+    checkAppAttestation(req, 'getLeaderboard');
     await rateLimit(uid, 'leaderboard', 120, 3600);
 
     const d = (req.data ?? {}) as Record<string, unknown>;
@@ -42,7 +42,15 @@ export const getLeaderboard = onCall(
     else if (/^daily_\d{8}$/.test(requested)) board = requested;
 
     const entries = col.leaderboard(board);
-    const top = await entries.orderBy('score', 'desc').limit(limit).get();
+
+    // Four independent reads. Run together: none of them needs another's
+    // answer, and serialised they turn one call into four round trips against
+    // a client that is watching a spinner.
+    const [top, mineSnap, total] = await Promise.all([
+      entries.orderBy('score', 'desc').limit(limit).get(),
+      entries.doc(uid).get(),
+      entries.count().get(),
+    ]);
 
     const rows: LeaderboardRow[] = top.docs.map((doc, i) => {
       const e = doc.data() as Omit<LeaderboardRow, 'rank' | 'isMe'>;
@@ -57,8 +65,8 @@ export const getLeaderboard = onCall(
       };
     });
 
-    // The caller's own standing, whether or not they made the page.
-    const mineSnap = await entries.doc(uid).get();
+    // The caller's own standing, whether or not they made the page. The rank
+    // query has to wait for their score, so this one genuinely is sequential.
     let me: LeaderboardRow | null = null;
     if (mineSnap.exists) {
       const e = mineSnap.data() as Omit<LeaderboardRow, 'rank' | 'isMe'>;
@@ -73,8 +81,6 @@ export const getLeaderboard = onCall(
         isMe: true,
       };
     }
-
-    const total = await entries.count().get();
 
     return { board, rows, me, total: total.data().count };
   }

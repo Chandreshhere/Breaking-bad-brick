@@ -1,4 +1,5 @@
 import { col } from '../utils/firestore';
+import { TTL, ttlAt } from '../utils/ttl';
 
 /**
  * Mobile networks retry. Without this, one tap on BUY can debit twice.
@@ -10,6 +11,11 @@ import { col } from '../utils/firestore';
  * coins" — is a statement about the world at that moment, not a thing that
  * happened, and caching it means a player who earns the coins and tries again
  * is told no forever, because the answer never gets recomputed.
+ *
+ * Records carry a TTL stamp. A key kept forever is a key that costs storage
+ * forever for a retry window measured in minutes; thirty days is far past any
+ * plausible retry, including one that sat in the offline outbox through a
+ * long outage.
  */
 export async function withIdempotency<T>(
   uid: string,
@@ -22,7 +28,15 @@ export async function withIdempotency<T>(
   const existing = await ref.get();
   if (existing.exists) return existing.data()?.result as T;
   const result = await run();
-  if (shouldStore(result)) await ref.set({ result, createdAt: Date.now() });
+  if (shouldStore(result)) {
+    const now = Date.now();
+    await ref.set({
+      result,
+      createdAt: now,
+      expiresAt: now + TTL.IDEMPOTENCY_MS,
+      ttlAt: ttlAt(now + TTL.IDEMPOTENCY_MS),
+    });
+  }
   return result;
 }
 
