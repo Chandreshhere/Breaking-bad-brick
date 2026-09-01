@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Breaking Bad Brick game API. The same Express app that runs on Render and
+  the same handlers that deploy as Cloud Functions — see src/app.ts. Data
+  stays in Firestore on the free Spark plan; only compute lives here.
+
+Parameters:
+  FirebaseServiceAccount:
+    Type: String
+    NoEcho: true
+    Description: >
+      The entire service-account JSON key, or base64 of it. This grants full
+      read/write to Firestore and bypasses every security rule, so it is
+      NoEcho and must never be committed.
+  FirebaseProjectId:
+    Type: String
+    Default: breaking-bad-bricks
+  RevenueCatWebhookSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Leave empty until real-money purchases are switched on.
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      # tsc, then a production-only install, into the artifact directory.
+      # See the Makefile — SAM's default Node builder would ship devDeps.
+      BuildMethod: makefile
+    Properties:
+      FunctionName: breaking-bad-brick-api
+      CodeUri: .
+      Handler: lib/lambda.handler
+      Runtime: nodejs22.x
+      # Graviton: same code, about 20% cheaper per GB-second, and this
+      # workload has no native dependency that cares.
+      Architectures: [arm64]
+      # 512 MB is the sweet spot here. Lambda scales CPU with memory, so
+      # dropping to 256 makes cold starts *longer* and can cost more in
+      # GB-seconds than it saves. The free tier is 400,000 GB-seconds, which
+      # at 512 MB is ~800,000 seconds of execution.
+      MemorySize: 512
+      # The client gives up after 3s on launch and 10s on a run submit, so
+      # this is a backstop against a hung Firestore call, not a target.
+      Timeout: 30
+      Environment:
+        Variables:
+          FIREBASE_SERVICE_ACCOUNT: !Ref FirebaseServiceAccount
+          FIREBASE_PROJECT_ID: !Ref FirebaseProjectId
+          REVENUECAT_WEBHOOK_SECRET: !Ref RevenueCatWebhookSecret
+          NODE_OPTIONS: --enable-source-maps
+      FunctionUrlConfig:
+        # Public by design: the game client and AdMob's verification callback
+        # both call in from outside AWS. Authentication is the Firebase ID
+        # token the callable handlers verify, not IAM.
+        #
+        # CORS is deliberately NOT configured here. The callable handlers ship
+        # their own cors middleware; configuring it at the Function URL as
+        # well produces duplicate Access-Control-Allow-Origin headers, which
+        # browsers reject outright.
+        AuthType: NONE
+      LoggingConfig:
+        LogFormat: JSON
+
+  # Without this, the log group is created implicitly with never-expiring
+  # retention — a slow, silent CloudWatch bill for logs nobody reads.
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+Outputs:
+  ApiUrl:
+    Description: Set this as VITE_BACKEND_URL, and use it for the AdMob SSV callback.
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl

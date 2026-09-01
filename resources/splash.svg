@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <defs>
+    <linearGradient id="court" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#0e3218"/>
+      <stop offset="0.6" stop-color="#071c0e"/>
+      <stop offset="1" stop-color="#04120a"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.36" cy="0.30" r="0.80">
+      <stop offset="0" stop-color="#fdf07a"/>
+      <stop offset="0.5" stop-color="#efd42e"/>
+      <stop offset="1" stop-color="#bf9c0a"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#efd42e" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#efd42e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="2732" height="2732" fill="url(#court)"/>
+
+  <!-- Capacitor centre-crops this single square across every device aspect
+       ratio, so nothing that matters may sit outside the middle third. -->
+  <circle cx="1366" cy="1300" r="620" fill="url(#halo)"/>
+
+  <g>
+    <rect x="1046" y="1010" width="200" height="76" rx="14" fill="#f2edda" opacity="0.9"/>
+    <rect x="1266" y="1010" width="200" height="76" rx="14" fill="#d98a4f" opacity="0.9"/>
+    <rect x="1486" y="1010" width="200" height="76" rx="14" fill="#f2edda" opacity="0.9"/>
+  </g>
+
+  <circle cx="1366" cy="1330" r="170" fill="url(#ball)"/>
+  <path d="M 1230 1228 C 1294 1292 1294 1368 1230 1432" fill="none" stroke="#f8f4e4"
+        stroke-width="24" stroke-linecap="round"/>
+  <path d="M 1502 1228 C 1438 1292 1438 1368 1502 1432" fill="none" stroke="#f8f4e4"
+        stroke-width="24" stroke-linecap="round"/>
+
+  <!-- Capacitor's CENTER_CROP keeps full height and crops the sides, so on a
+       9:19.5 phone only the central ~46% of this square's width is ever
+       visible. Anything wider than that is not "slightly tight" — it is
+       cut in half. The wordmark is sized to sit inside 40%. -->
+  <text x="1366" y="1636" text-anchor="middle" fill="#f2edda"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="60" font-weight="700" letter-spacing="15">BREAKING BAD BRICK</text>
+</svg>

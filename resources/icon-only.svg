@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="court" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#175020"/>
+      <stop offset="0.55" stop-color="#0b2c14"/>
+      <stop offset="1" stop-color="#04120a"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.36" cy="0.30" r="0.80">
+      <stop offset="0" stop-color="#fdf07a"/>
+      <stop offset="0.5" stop-color="#efd42e"/>
+      <stop offset="1" stop-color="#bf9c0a"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#efd42e" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#efd42e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#court)"/>
+
+  <!-- A wall mid-break. The gap in the second row is the whole idea of the
+       game, and it is the one detail that still reads at 48px. -->
+  <g>
+    <rect x="118" y="188" width="248" height="96" rx="16" fill="#f2edda"/>
+    <rect x="388" y="188" width="248" height="96" rx="16" fill="#d98a4f"/>
+    <rect x="658" y="188" width="248" height="96" rx="16" fill="#f2edda"/>
+
+    <rect x="118" y="306" width="248" height="96" rx="16" fill="#d98a4f" opacity="0.85"/>
+    <!-- the hole the ball just punched -->
+    <rect x="658" y="306" width="248" height="96" rx="16" fill="#f2edda" opacity="0.85"/>
+  </g>
+
+  <!-- Light spilling through the gap, sitting behind the ball. -->
+  <circle cx="512" cy="500" r="300" fill="url(#halo)"/>
+
+  <circle cx="512" cy="688" r="216" fill="url(#ball)"/>
+  <path d="M 339 558 C 421 640 421 736 339 818" fill="none" stroke="#f8f4e4"
+        stroke-width="30" stroke-linecap="round"/>
+  <path d="M 685 558 C 603 640 603 736 685 818" fill="none" stroke="#f8f4e4"
+        stroke-width="30" stroke-linecap="round"/>
+</svg>

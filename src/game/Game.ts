@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AudioFx } from '../audio/AudioFx';
 import type { VisualConfig } from '../config/visual.config';
+import type { EventMap, EventName } from '../backend/Analytics';
 import type { BiomeName } from '../environment/EnvironmentDirector';
 import type { BallTrail } from '../effects/BallTrail';
 import type { GameFeelManager } from '../effects/GameFeel';
@@ -72,6 +73,15 @@ const POWERUP_LABELS: Record<PowerupType, string> = {
  */
 export class Game {
   private state: GameState = 'intro';
+
+  /**
+   * Read-only view of the loop's state, for crash reports and analytics.
+   * Knowing a throw happened during 'rally' rather than 'intro' is most of
+   * the diagnosis on a device you cannot reproduce on.
+   */
+  get currentState(): string {
+    return this.state;
+  }
   private lives: number;
   private score = 0;
   private accumulator = 0;
@@ -107,6 +117,10 @@ export class Game {
   private runSeconds = 0;
   private runContinues = 0;
   private livesLostThisLevel = 0;
+  /** Guards `level_start` against firing again on every respawn. */
+  private lastLevelAnnounced = 0;
+  /** Play-clock reading when the current boss appeared, for time-to-kill. */
+  private bossStartedAt = 0;
   /** A settings/map overlay is open — global keys must not resume play. */
   private overlayOpen = false;
   /** Attract mode — the menu plays itself behind the screens. */
@@ -145,6 +159,20 @@ export class Game {
   /** Shown before anything tracking-related runs; resolves to the intro. */
   onNeedConsent: ((done: () => void) => boolean) | null = null;
   onOpenPrivacy: ((onBack: () => void) => void) | null = null;
+  /**
+   * Arena gating. Returns the level a world still needs, or null when it is
+   * playable. Supplied by Experience, which owns both the local best level
+   * and whatever the server last granted.
+   */
+  arenaLock: ((key: string | null) => number | null) | null = null;
+  /**
+   * Analytics sink, supplied by Experience.
+   *
+   * One hook rather than one per event: the loop should not grow a field
+   * every time the taxonomy does, and the type parameter still catches a
+   * misspelled name or a renamed payload key at compile time.
+   */
+  track: (<K extends EventName>(name: K, params: EventMap[K]) => void) | null = null;
   /** Today's challenge state, supplied by Experience after bootstrap. */
   dailyStatus: { played: boolean; score: number } | null = null;
   onLeaveDaily: (() => void) | null = null;
@@ -404,6 +432,7 @@ export class Game {
     this.overlayOpen = true;
     this.screens.showMapSelect({
       current: this.selectedMap,
+      isLocked: this.arenaLock ? (key): number | null => this.arenaLock!(key) : undefined,
       onPick: (key): void => {
         this.audio.powerup();
         this.overlayOpen = false;
@@ -457,6 +486,7 @@ export class Game {
   }
 
   private startCountdown(): void {
+    this.announceLevel();
     // Leaving attract mode: clear the demo ball and restore a pristine field.
     if (this.demo) {
       this.stopDemo();
@@ -735,6 +765,10 @@ export class Game {
     }
 
     const canContinue = !this.continueUsed && (this.adAvailable?.() ?? false) && this.score > 0;
+    // Offered, not shown. The gap between this and `ad_started` is the
+    // opt-in rate — the number that decides whether rewarded video is worth
+    // carrying at all.
+    if (canContinue) this.track?.('ad_offered', { placement: 'continue' });
     this.screens.showResults(
       'GAME OVER',
       this.score,
@@ -763,6 +797,8 @@ export class Game {
     this.runBricks = 0;
     this.runSeconds = 0;
     this.runContinues = 0;
+    // A fresh run re-enters level 1, which must be announced again.
+    this.lastLevelAnnounced = 0;
     this.onRunStart?.(this.runMode);
   }
 
@@ -819,11 +855,14 @@ export class Game {
   private async continueAfterAd(): Promise<void> {
     if (this.continueUsed || !this.showRewardedAd) return;
     this.continueUsed = true;
+    this.track?.('ad_started', { placement: 'continue' });
     const completed = await this.showRewardedAd();
     if (!completed) {
+      this.track?.('ad_dismissed', { placement: 'continue' });
       this.hud.powerupFlash('AD NOT COMPLETED', '#ff8080');
       return;
     }
+    this.track?.('ad_completed', { placement: 'continue' });
     this.lives = 1;
     this.runContinues += 1;
     this.runFiled = false; // the run is live again; it will bank when it ends
@@ -838,12 +877,39 @@ export class Game {
     this.startCountdown();
   }
 
+  /**
+   * Emits `level_start` once per level actually entered.
+   *
+   * `startCountdown` also runs after every life lost, so the guard is what
+   * keeps a hard level from reporting five starts and wrecking the
+   * per-level completion rate this event exists to measure.
+   */
+  private announceLevel(): void {
+    if (this.demo) return; // attract mode is not a session
+    const level = this.levels.level;
+    if (level === this.lastLevelAnnounced) return;
+    this.lastLevelAnnounced = level;
+    const isBoss = this.levels.isBossLevel();
+    const world = String(this.cfg.worldKind);
+    this.track?.('level_start', { level, world, is_boss: isBoss });
+    if (isBoss) {
+      this.bossStartedAt = this.playSeconds;
+      this.track?.('boss_engaged', { level, world });
+    }
+  }
+
   /** levelClear cinematic finished — show the animated results screen. */
   private finishLevelClear(): void {
     this.setState('win');
     const clearSeconds = this.playSeconds;
     const noMiss = this.livesLostThisLevel === 0;
     if (noMiss) this.score += 500;
+    this.track?.('level_clear', {
+      level: this.levels.level,
+      seconds: Math.round(clearSeconds * 10) / 10,
+      best_combo: this.combo.highestCombo,
+      no_miss: noMiss,
+    });
     const stats: { label: string; value: string }[] = [
       { label: 'CLEAR TIME', value: `${clearSeconds.toFixed(1)}s` },
     ];
@@ -1124,6 +1190,7 @@ export class Game {
   }
 
   private applyPowerup(type: PowerupType): void {
+    this.track?.('powerup_collected', { type, level: this.levels.level });
     this.audio.powerup();
     this.feel.impact('TINY');
     this.hud.powerupFlash(POWERUP_LABELS[type], this.cfg.game.powerups.capsuleColors[type]);
@@ -1397,6 +1464,13 @@ export class Game {
       this.setState('lifeLost');
       this.hud.breakLife(this.lives);
       this.hud.powerupFlash('LIFE LOST', '#ff5a4a');
+      // Where players actually die is the single best difficulty signal
+      // there is, and no amount of playtesting substitutes for it.
+      this.track?.('life_lost', {
+        level: this.levels.level,
+        score: this.score,
+        lives_left: this.lives,
+      });
     }
   }
 
@@ -1414,8 +1488,14 @@ export class Game {
     }
     const result = field.hit(brick);
     if (brick.type === 'BOSS') {
-      if (result.destroyed) this.onBossDefeated?.();
-      else this.onBossHit?.();
+      if (result.destroyed) {
+        this.onBossDefeated?.();
+        this.track?.('boss_defeated', {
+          level: this.levels.level,
+          world: String(this.cfg.worldKind),
+          seconds_to_kill: Math.round((this.playSeconds - this.bossStartedAt) * 10) / 10,
+        });
+      } else this.onBossHit?.();
     }
     if (!result.destroyed) {
       this.audio.armor();

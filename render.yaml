@@ -1,0 +1,37 @@
+# Render Blueprint — the game's backend API.
+#
+# This hosts the same callable API that would otherwise run on Cloud
+# Functions, which needs the paid Firebase Blaze plan. Firestore,
+# Authentication, App Check and Remote Config all stay on Firebase's free
+# Spark plan; only the compute moves here. See docs/RENDER.md.
+services:
+  - type: web
+    name: breaking-bad-brick-api
+    runtime: node
+    # The server lives inside functions/ so it shares every line of domain
+    # logic, security check and validator with the Cloud Functions build
+    # rather than forking a second copy that drifts.
+    rootDir: functions
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # Render restarts the instance if this stops answering. It is also the
+    # path to point an uptime pinger at on the free plan — see docs/RENDER.md
+    # for why a sleeping instance matters more here than it looks.
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The whole service-account JSON key, pasted as-is. Marked sync:false
+      # so it is never written into this file or into git — set it in the
+      # Render dashboard under Environment.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: breaking-bad-bricks
+      # Only needed once real-money purchases are switched on. The webhook
+      # rejects every call until it is set, which is the correct default.
+      - key: REVENUECAT_WEBHOOK_SECRET
+        sync: false
