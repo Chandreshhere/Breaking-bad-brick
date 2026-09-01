@@ -164,6 +164,21 @@ const CSS = /* css */ `
   letter-spacing: 0.14em; }
 .acb-map-sub { color: rgba(242,237,218,0.6); font-size: clamp(10px, 1vw, 13px);
   letter-spacing: 0.2em; }
+/* A locked arena stays legible — the point is to advertise what is coming,
+   not to hide it. Desaturated, un-hoverable, with the requirement in place
+   of the tagline. */
+.acb-map-locked { cursor: default; opacity: 0.5; filter: saturate(0.25);
+  border-color: rgba(242,237,218,0.18); }
+.acb-map-locked:hover { transform: none; border-color: rgba(242,237,218,0.18); box-shadow: none; }
+.acb-map-locked .acb-map-name { color: rgba(242,237,218,0.7); }
+.acb-map-req { color: #efd42e; font-size: clamp(10px, 1vw, 13px); letter-spacing: 0.2em;
+  display: flex; align-items: center; gap: 6px; }
+/* The policy link is a real anchor, not a button: a store reviewer taps it
+   expecting a browser, and screen readers should announce it as a link. */
+.acb-policy { color: rgba(242,237,218,0.72); font-size: clamp(10px, 2.4vw, 12px);
+  letter-spacing: 0.2em; text-decoration: underline; text-underline-offset: 4px;
+  padding: 6px 2px; }
+.acb-policy:hover { color: #efd42e; }
 .acb-version { position: absolute; left: 26px; bottom: 20px; font-size: 11px;
   letter-spacing: 0.22em; color: rgba(242,237,218,0.45); pointer-events: none; }
 
@@ -213,6 +228,8 @@ const MAPS: Array<{ key: string | null; name: string; sub: string; color: string
 const COIN_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="12" cy="12" r="9" fill="#efd42e"/><circle cx="12" cy="12" r="5.6" fill="none" stroke="#0c2717" stroke-width="1.6"/></svg>`;
 
 const BALL_SVG = `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0c2717"/><path d="M4 6 C10 10 10 14 4 18 M20 6 C14 10 14 14 20 18" stroke="#efd42e" stroke-width="1.8" fill="none"/></svg>`;
+
+const LOCK_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="#efd42e" style="flex:none"><path d="M12 2a5 5 0 0 0-5 5v3H6a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V11a1 1 0 0 0-1-1h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>`;
 
 const ICONS: Record<string, string> = {
   DEFENSIVE_WALL: `<svg viewBox="0 0 24 24" fill="#f2edda"><path d="M12 2 L20 5.5 V12 C20 17 16.5 20.8 12 22 C7.5 20.8 4 17 4 12 V5.5 Z"/></svg>`,
@@ -343,21 +360,36 @@ export class Screens {
   }
 
   /** Arena picker — one card per world; the current pick is highlighted. */
+  /**
+   * Arena picker.
+   *
+   * `isLocked` returns the level a world still needs, or null when it is
+   * playable. Locked cards render but do not respond — the server recomputes
+   * unlocks on every accepted run, so letting someone into an arena the
+   * server has not granted would show a choice that silently reverts.
+   */
   showMapSelect(opts: {
     current: string | null;
     onPick: (key: string | null) => void;
     onBack: () => void;
+    isLocked?: (key: string | null) => number | null;
   }): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
-    const cards = MAPS.map(
-      (m) => `
-      <button class="acb-map-card${m.key === opts.current ? ' acb-map-selected' : ''}"
-              style="--c:${m.color}" data-map="${m.key ?? 'AUTO'}">
+    const cards = MAPS.map((m) => {
+      const needs = opts.isLocked?.(m.key) ?? null;
+      const cls = needs !== null ? ' acb-map-locked' : m.key === opts.current ? ' acb-map-selected' : '';
+      const sub =
+        needs !== null
+          ? `<span class="acb-map-req">${LOCK_SVG}REACH LEVEL ${needs}</span>`
+          : `<span class="acb-map-sub">${m.sub}</span>`;
+      return `
+      <button class="acb-map-card${cls}" style="--c:${m.color}"
+              data-map="${m.key ?? 'AUTO'}"${needs !== null ? ' data-locked="1" disabled' : ''}>
         <span class="acb-map-name">${m.name}</span>
-        <span class="acb-map-sub">${m.sub}</span>
-      </button>`
-    ).join('');
+        ${sub}
+      </button>`;
+    }).join('');
     el.innerHTML = `
       <div class="acb-wordmark">BREAKING BAD BRICK</div>
       <div class="acb-maps-wrap">
@@ -366,6 +398,7 @@ export class Screens {
         <button class="acb-pill" data-action="back">${BALL_SVG}BACK</button>
       </div>`;
     el.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((card) => {
+      if (card.dataset['locked'] === '1') return;
       card.onclick = (): void => {
         const raw = card.dataset['map']!;
         opts.onPick(raw === 'AUTO' ? null : raw);
@@ -658,7 +691,12 @@ export class Screens {
    * consent at all. Declining is fully playable — it costs the rewarded ad,
    * nothing else.
    */
-  showConsent(opts: { onAccept: () => void; onDecline: () => void; onPrivacy?: () => void }): void {
+  showConsent(opts: {
+    onAccept: () => void;
+    onDecline: () => void;
+    onPrivacy?: () => void;
+    policyUrl?: string | undefined;
+  }): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
     el.innerHTML = `
@@ -675,6 +713,11 @@ export class Screens {
         <button class="acb-pill" data-action="accept">ALLOW</button>
         <button class="acb-pill acb-pill-ghost" data-action="decline">NO THANKS</button>
         ${opts.onPrivacy ? '<button class="acb-tab" data-action="privacy">PRIVACY &amp; DATA</button>' : ''}
+        ${
+          opts.policyUrl
+            ? `<a class="acb-policy" href="${opts.policyUrl}" target="_blank" rel="noopener noreferrer">READ THE PRIVACY POLICY</a>`
+            : ''
+        }
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="accept"]')!.onclick = opts.onAccept;
     el.querySelector<HTMLButtonElement>('[data-action="decline"]')!.onclick = opts.onDecline;
@@ -693,6 +736,10 @@ export class Screens {
     onExport: () => void;
     onDelete: () => void;
     onBack: () => void;
+    /** Reopens Google's UMP form. Only present where UMP requires it. */
+    onAdPrivacy?: (() => void) | undefined;
+    /** Public policy URL. Both stores require one; so does AdMob. */
+    policyUrl?: string | undefined;
   }): void {
     const el = document.createElement('div');
     el.className = 'acb-screen';
@@ -707,6 +754,16 @@ export class Screens {
           No name, email or contacts.
         </div>
         <button class="acb-pill acb-pill-ghost" data-action="export">DOWNLOAD MY DATA</button>
+        ${
+          opts.onAdPrivacy
+            ? '<button class="acb-pill acb-pill-ghost" data-action="adprivacy">AD PRIVACY OPTIONS</button>'
+            : ''
+        }
+        ${
+          opts.policyUrl
+            ? `<a class="acb-policy" href="${opts.policyUrl}" target="_blank" rel="noopener noreferrer">PRIVACY POLICY</a>`
+            : ''
+        }
         <button class="acb-pill" style="background:#c0392b;color:#fff" data-action="delete">
           DELETE MY ACCOUNT
         </button>
@@ -714,6 +771,8 @@ export class Screens {
       </div>`;
     el.querySelector<HTMLButtonElement>('[data-action="export"]')!.onclick = opts.onExport;
     el.querySelector<HTMLButtonElement>('[data-action="delete"]')!.onclick = opts.onDelete;
+    const adPriv = el.querySelector<HTMLButtonElement>('[data-action="adprivacy"]');
+    if (adPriv && opts.onAdPrivacy) adPriv.onclick = opts.onAdPrivacy;
     el.querySelector<HTMLButtonElement>('[data-action="back"]')!.onclick = opts.onBack;
     this.show(el);
   }

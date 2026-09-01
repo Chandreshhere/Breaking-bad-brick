@@ -65,11 +65,14 @@ export class AdMobRewardedAd implements RewardedAdProvider {
       .Capacitor;
     if (!cap?.isNativePlatform?.()) return false;
     try {
-      // Indirect specifier on purpose: the plugin only exists in a Capacitor
-      // build, and a literal import would make the web build fail to compile
-      // over a dependency it is never meant to have.
-      const spec = '@capacitor-community/admob';
-      const mod = (await import(/* @vite-ignore */ spec)) as unknown as {
+      // A LITERAL specifier, and it has to be. With the name hidden in a
+      // variable the bundler cannot see it, leaves `import('@capacitor-...')`
+      // in the output verbatim, and the WebView then cannot resolve a bare
+      // module name at runtime — so `load()` returned false on every device
+      // and the store builds silently had no ads at all. The plugin is a
+      // declared dependency and ships a web implementation, so importing it
+      // directly is safe on both targets and is what gets it bundled.
+      const mod = (await import('@capacitor-community/admob')) as unknown as {
         AdMob: NonNullable<AdMobRewardedAd['plugin']>;
       };
       this.plugin = mod.AdMob;

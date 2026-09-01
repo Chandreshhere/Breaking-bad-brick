@@ -1,5 +1,26 @@
 apply plugin: 'com.android.application'
 
+/**
+ * Release signing.
+ *
+ * Play will not accept an unsigned build, and the upload key is permanent:
+ * lose it and this listing can never be updated again by anyone, including
+ * you. So the credentials live in android/keystore.properties, which is
+ * gitignored, and the file itself must be backed up somewhere that survives
+ * this machine.
+ *
+ * A missing file is not an error. It degrades to an unsigned release build
+ * so CI, a fresh clone and `assembleDebug` all still work — only the actual
+ * upload artifact needs the key.
+ */
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+
 android {
     namespace = "com.breakingbadbrick.game"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +28,11 @@ android {
         applicationId "com.breakingbadbrick.game"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode must increase on EVERY upload to Play, including a
+        // build that only fixes a typo. versionName is the string players
+        // see; keep it in step with package.json.
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,11 +40,39 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Deliberately off for the first release. This app is a WebView
+            // shell: R8 would shrink a few hundred KB of Java out of a
+            // bundle dominated by web assets, in exchange for the classic
+            // failure where debug works and release crashes on a device you
+            // do not own. proguard-rules.pro already carries the keep rules,
+            // so turning this on later is a one-word change — do it once a
+            // release build has been proven on real hardware.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+
+    bundle {
+        // One language per install rather than all of them. The game ships
+        // no translations today, so this costs nothing and stays correct
+        // when it does.
+        language { enableSplit = true }
     }
 }
 

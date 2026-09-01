@@ -15,6 +15,14 @@ functions/node_modules
 # Firebase native config carries project ids; keep it out of a public repo
 android/app/google-services.json
 ios/App/App/GoogleService-Info.plist
+
+# Service-account keys. These bypass every Firestore security rule and grant
+# full read/write to the database — a committed one is a total compromise,
+# not a leak of configuration. The server reads the key from an environment
+# variable instead; see docs/RENDER.md.
+*serviceAccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat

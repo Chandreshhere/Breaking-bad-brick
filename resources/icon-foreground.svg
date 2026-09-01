@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="ball" cx="0.36" cy="0.30" r="0.80">
+      <stop offset="0" stop-color="#fdf07a"/>
+      <stop offset="0.5" stop-color="#efd42e"/>
+      <stop offset="1" stop-color="#bf9c0a"/>
+    </radialGradient>
+  </defs>
+  <!-- Fills the canvas rather than hugging a safe zone. The adaptive-icon
+       XML already insets this layer by 16.7%, which IS the safe zone —
+       shrinking the artwork here as well would apply the margin twice and
+       leave a small mark floating in a large circle. -->
+  <g>
+    <rect x="162" y="184" width="224" height="96" rx="16" fill="#f2edda"/>
+    <rect x="400" y="184" width="224" height="96" rx="16" fill="#d98a4f"/>
+    <rect x="638" y="184" width="224" height="96" rx="16" fill="#f2edda"/>
+
+    <rect x="162" y="300" width="224" height="96" rx="16" fill="#d98a4f" opacity="0.85"/>
+    <rect x="638" y="300" width="224" height="96" rx="16" fill="#f2edda" opacity="0.85"/>
+  </g>
+
+  <circle cx="512" cy="614" r="226" fill="url(#ball)"/>
+  <path d="M 331 478 C 417 564 417 664 331 750" fill="none" stroke="#f8f4e4"
+        stroke-width="31" stroke-linecap="round"/>
+  <path d="M 693 478 C 607 564 607 664 693 750" fill="none" stroke="#f8f4e4"
+        stroke-width="31" stroke-linecap="round"/>
+</svg>
