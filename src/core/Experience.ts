@@ -21,7 +21,11 @@ import { GameObjects } from '../game/GameObjects';
 import { Input } from '../game/Input';
 import { LevelDirector } from '../game/LevelDirector';
 import { ConsentStore } from '../backend/Consent';
+import { NativeConsent } from '../backend/NativeConsent';
+import { Analytics, platformName } from '../backend/Analytics';
+import { CrashReporter } from '../backend/Crash';
 import { RemoteProgress } from '../backend/RemoteProgress';
+import { unlockedWorlds, requiredLevel } from '../game/WorldUnlocks';
 import type {
   LeaderboardPage,
   SubmitRunResult,
@@ -62,6 +66,24 @@ const LIGHT_DEBUG_STATES: Array<{ name: string; state: LightingState }> = [
   { name: 'LIGHT: STORM+HEAVY', state: { heavy: 1, weather: 0.8 } },
 ];
 
+/**
+ * Public privacy policy. Both stores require a reachable URL on the listing,
+ * AdMob requires one, and the consent screen is where a reviewer looks for
+ * it. Undefined simply hides the link rather than rendering a dead one — a
+ * broken policy link is worse than none at all.
+ */
+const PRIVACY_POLICY_URL = import.meta.env['VITE_PRIVACY_POLICY_URL'] as string | undefined;
+
+/**
+ * Delays, in ms, before re-attempting a failed launch call.
+ *
+ * Sized for a host that sleeps: the documented cold start is about a minute,
+ * so the schedule spans past that rather than giving up inside it. Three
+ * attempts and then silence — a backend that is down stays down, and a
+ * client that retries forever is a client that drains a battery in a tunnel.
+ */
+const BACKEND_WAKE_RETRIES = [8_000, 25_000, 45_000] as const;
+
 const TONE_MAPPINGS = {
   ACES: THREE.ACESFilmicToneMapping,
   AgX: THREE.AgXToneMapping,
@@ -87,6 +109,19 @@ export class Experience {
   readonly boss = new BossCharacter();
   readonly progress = new ProgressStore();
   readonly consent = new ConsentStore();
+  /**
+   * Google's certified CMP plus Apple's tracking prompt. On web and in any
+   * build without the AdMob plugin it reports unavailable and the in-house
+   * gate below decides instead.
+   */
+  readonly nativeConsent = new NativeConsent();
+  /**
+   * Analytics. Gated on the same consent the ads are, and a no-op with no
+   * sink — so this is safe to call from anywhere without a null check.
+   */
+  readonly analytics = new Analytics(() => this.consent.analyticsAllowed);
+  /** Crash reporting. Handlers attach at startup; upload needs a DSN. */
+  readonly crash = new CrashReporter();
   /**
    * Cloud mirror of the profile. Disabled and inert without a Firebase
    * config, so the game is identical offline — see src/backend/.
@@ -269,7 +304,22 @@ export class Experience {
     // world immediately — the intro screen shows it as a live preview.
     this.loop.onMapSelected = (biome): void => {
       this.env.forcedBiome = biome;
+      this.analytics.track('arena_selected', { world: biome ?? 'AUTO', locked: false });
       applyLevelEnvironment(this.levels.level);
+    };
+
+    // Arena gating. The picker asks per card; the answer is the union of
+    // what the local best level has earned and what the server last granted,
+    // so an offline player still progresses and a granted entitlement is
+    // never taken away. AUTO CYCLE is always open — it only ever rotates
+    // through worlds the player already holds.
+    this.loop.arenaLock = (key): number | null => {
+      if (key === null) return null;
+      const unlocked = unlockedWorlds(
+        this.progress.profile.bestLevel,
+        this.remote.player?.inventory.unlockedWorlds
+      );
+      return unlocked.has(key) ? null : requiredLevel(key);
     };
     this.loop.onOverdrive = (): void => this.weather.forceStrike();
     // Persisted cosmetics, applied to the freshly built objects.
@@ -287,6 +337,12 @@ export class Experience {
     // Run lifecycle. Both are deliberately not awaited: a slow ticket must
     // never delay a serve, and a slow submit must never delay the results.
     this.loop.onRunStart = (mode): void => {
+      this.analytics.track('run_start', {
+        mode,
+        world: String(this.cfg.worldKind),
+        ball: this.progress.profile.ball,
+        paddle: this.progress.profile.paddle,
+      });
       void this.remote.startRun(mode).then((ticket) => {
         // The server owns the daily seed. If it differs from what bootstrap
         // reported — a date rollover mid-session — adopt the server's.
@@ -294,6 +350,13 @@ export class Experience {
       });
     };
     this.loop.onRunSubmit = (run): void => {
+      this.analytics.track('run_end', {
+        score: run.score,
+        level_reached: run.levelReached,
+        best_combo: run.bestCombo,
+        seconds: Math.round(run.durationSeconds),
+        continues_used: run.continuesUsed,
+      });
       void this.remote.submitRun(run).then((res) => {
         if (res) this.adoptRunResult(res);
       });
@@ -307,20 +370,26 @@ export class Experience {
     // With none configured nothing is collected, so nothing is asked.
     this.loop.onNeedConsent = (done): boolean => {
       if (!this.remote.enabled || !this.consent.needsPrompt) return false;
-      this.screens.showConsent({
-        onAccept: (): void => {
-          this.audio.click();
-          this.consent.set(true, true);
-          void this.remote.setConsent(true, true);
-          done();
-        },
-        onDecline: (): void => {
-          this.audio.click();
-          this.consent.set(false, false);
-          void this.remote.setConsent(false, false);
-          done();
-        },
-        onPrivacy: (): void => this.openPrivacy(done),
+
+      // On a store build Google's UMP is the authority: it is the certified
+      // CMP, it emits the TCF strings networks actually read, and asking the
+      // same question twice in two different dialogs is exactly the kind of
+      // thing that gets a listing rejected. The in-house screen below only
+      // runs where UMP does not exist — the web build.
+      void this.nativeConsent.request().then((ump) => {
+        if (!ump.available) {
+          this.screens.showConsent({
+            onAccept: (): void => this.answerConsent(true, done),
+            onDecline: (): void => this.answerConsent(false, done),
+            onPrivacy: (): void => this.openPrivacy(done),
+            policyUrl: PRIVACY_POLICY_URL,
+          });
+          return;
+        }
+        // UMP has already spoken to the player. Mirror its verdict into the
+        // local store so every existing `adsAllowed` check keeps working
+        // unchanged, and record it server-side as evidence.
+        this.answerConsent(ump.canRequestAds, done);
       });
       return true;
     };
@@ -335,6 +404,20 @@ export class Experience {
         void this.audio.setSuspended(true);
       },
       onResume: (): void => void this.audio.setSuspended(false),
+    });
+
+    // Error reporting first, so a throw in anything below is still caught.
+    // The handlers install unconditionally; only the upload needs a DSN.
+    void this.crash.attach({
+      state: (): string => this.loop.currentState,
+      release: `breaking-bad-brick@${__APP_VERSION__}`,
+      onError: (message, state): void => this.analytics.track('error', { message, state }),
+    });
+    this.loop.track = (name, params): void => this.analytics.track(name, params);
+    this.analytics.track('game_open', {
+      version: __APP_VERSION__,
+      platform: platformName(),
+      is_first_run: this.progress.profile.runs === 0,
     });
 
     // Fire and forget: identity + launch payload. Deliberately not awaited —
@@ -392,13 +475,14 @@ export class Experience {
         this.graphicsMode = mode;
         if (mode === 'AUTO') {
           const tier = detectInitialTier();
-          this.adaptive = new AdaptiveQuality(tier, (t): void => this.applyQuality(t));
+          this.adaptive = this.makeAdaptive(tier);
           this.applyQuality(tier);
         } else {
           this.adaptive = null;
           this.applyQuality(mode);
         }
       }
+      this.analytics.track('settings_changed', { key, value });
       this.saveSetting(key, value);
     };
     if (import.meta.env.DEV) {
@@ -410,9 +494,7 @@ export class Experience {
     this.music.setVolume(this.cfg.audioSettings.musicVolume);
 
     if (this.graphicsMode === 'AUTO') {
-      this.adaptive = new AdaptiveQuality(this.qualityTier, (tier): void =>
-        this.applyQuality(tier)
-      );
+      this.adaptive = this.makeAdaptive(this.qualityTier);
     }
 
     // Browsers only allow audio after a user gesture — unlock on the first.
@@ -434,11 +516,32 @@ export class Experience {
    * Signs in anonymously and pulls the launch payload. Every failure path
    * ends in "carry on with local data"; nothing here may block startup.
    */
-  private async startBackend(): Promise<void> {
+  private async startBackend(attempt = 0): Promise<void> {
     if (!this.remote.enabled) return;
     try {
       const boot = await this.remote.bootstrap();
-      if (!boot) return;
+      if (!boot) {
+        // A self-hosted API on a free tier sleeps after inactivity and takes
+        // around a minute to wake, which is far outside the 3s budget the
+        // launch call is allowed. Lengthening that budget would be the wrong
+        // fix — it would stall the intro screen for every player to help the
+        // unlucky first one. Instead the failed call has already *started*
+        // the wake-up, and these quiet retries collect the result a few
+        // seconds later. Nothing is blocked meanwhile: the game is fully
+        // playable offline, and a retry that lands simply folds the cloud
+        // profile in mid-session.
+        if (attempt < BACKEND_WAKE_RETRIES.length) {
+          window.setTimeout(
+            () => void this.startBackend(attempt + 1),
+            BACKEND_WAKE_RETRIES[attempt]
+          );
+        }
+        return;
+      }
+      // Tie analytics and crash reports to the anonymous uid so a spike can
+      // be traced to a cohort rather than to nobody in particular.
+      this.analytics.identify(boot.player.uid);
+      this.crash.identify(boot.player.uid);
       console.info('[backend] bootstrap ok', {
         uid: boot.player.uid,
         serverBest: boot.player.stats.bestScore,
@@ -474,6 +577,27 @@ export class Experience {
     } catch (err) {
       console.warn('[backend] bootstrap threw, staying offline', err);
     }
+  }
+
+  /**
+   * Records a consent decision in all three places it has to land: the local
+   * store the ad gate reads synchronously, the server (as evidence that the
+   * question was asked and answered), and analytics.
+   *
+   * Ads and analytics move together deliberately. Splitting them into two
+   * questions measurably increases the number of people who answer neither,
+   * and the honest framing — "personalised ads and anonymous usage data, or
+   * neither" — is what the in-game screen already presents.
+   */
+  private answerConsent(granted: boolean, done: () => void): void {
+    this.audio.click();
+    this.consent.set(granted, granted);
+    void this.remote.setConsent(granted, granted);
+    this.analytics.track('consent_answered', { ads: granted, analytics: granted });
+    // Consent just changed: a provider that refused to preload before can
+    // load now, so the first rewarded offer is not an empty one.
+    if (granted && this.ads instanceof ConsentGatedAd) void this.ads.prepare();
+    done();
   }
 
   /** Applies a validated run's rewards. The server decides the coins. */
@@ -512,6 +636,13 @@ export class Experience {
     const paint = (busy: string | null): void => {
       this.screens.showPrivacy({
         busy,
+        policyUrl: PRIVACY_POLICY_URL,
+        // UMP requires a persistent entry point wherever it says one is
+        // required — an EU player must be able to reopen the form and
+        // change their answer. This is that entry point.
+        onAdPrivacy: this.nativeConsent.state.privacyOptionsRequired
+          ? (): void => void this.nativeConsent.showPrivacyOptions()
+          : undefined,
         onExport: (): void => {
           paint('PREPARING YOUR DATA…');
           void this.remote.exportData().then((data) => {
@@ -573,6 +704,7 @@ export class Experience {
     const isBall = tab === 'ball';
     const defs = isBall ? BALL_SKINS : PADDLE_SKINS;
     const p = this.progress.profile;
+    this.analytics.track('shop_opened', { coins: p.coins, tab });
     this.screens.showShop({
       coins: p.coins,
       tab,
@@ -600,6 +732,12 @@ export class Experience {
           this.audio.wall(); // can't afford it
           return;
         } else {
+          this.analytics.track('item_purchased', {
+            kind: tab,
+            id,
+            price: def.price,
+            coins_after: this.progress.profile.coins,
+          });
           this.audio.win();
         }
         this.applyCosmetics();
@@ -672,6 +810,16 @@ export class Experience {
       return;
     }
     this.audio.win();
+    // Only a real spend is a purchase — re-equipping something already owned
+    // costs nothing and must not inflate the coin-sink numbers.
+    if (!owned) {
+      this.analytics.track('item_purchased', {
+        kind,
+        id,
+        price: this.progress.profile.coins - res.player.wallet.coins,
+        coins_after: res.player.wallet.coins,
+      });
+    }
     this.progress.applyRemote(res.player);
     this.applyCosmetics();
     this.openShop(kind, onBack);
@@ -697,6 +845,25 @@ export class Experience {
     // The clay material is recreated by every build — re-attach or the
     // wet-surface controller keeps driving the disposed one.
     this.wetSurface.attach(this.stadium.clayMaterial);
+  }
+
+  /**
+   * The AUTO-mode watchdog, wired to report every step-down.
+   *
+   * `quality_downgraded` is the most valuable event in the taxonomy and the
+   * one no lab device will ever produce for you: it names the real hardware
+   * that cannot hold frame rate, which is the difference between a 2-star
+   * review you can act on and one you cannot.
+   */
+  private makeAdaptive(tier: QualityTier): AdaptiveQuality {
+    return new AdaptiveQuality(tier, (next): void => {
+      this.analytics.track('quality_downgraded', {
+        from_tier: this.qualityTier,
+        to_tier: next,
+        frame_ms: Math.round(this.adaptive?.frameMs ?? 0),
+      });
+      this.applyQuality(next);
+    });
   }
 
   /** Re-applies every quality knob for a tier. Rare (setting change or one

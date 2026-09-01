@@ -51,8 +51,10 @@ export class NativeShell {
     if (!isNative()) return;
 
     try {
-      const spec = '@capacitor/app';
-      const { App } = (await import(/* @vite-ignore */ spec)) as unknown as { App: AppPlugin };
+      // Literal specifier — see the note in src/game/Ads.ts. Hiding the name
+      // in a variable stopped the bundler resolving it, which left the back
+      // button and the background-pause listeners unattached on device.
+      const { App } = (await import('@capacitor/app')) as unknown as { App: AppPlugin };
 
       this.listeners.push(
         await App.addListener('appStateChange', ({ isActive }) => {
@@ -73,8 +75,7 @@ export class NativeShell {
     }
 
     try {
-      const spec = '@capacitor/splash-screen';
-      const { SplashScreen } = (await import(/* @vite-ignore */ spec)) as unknown as {
+      const { SplashScreen } = (await import('@capacitor/splash-screen')) as unknown as {
         SplashScreen: { hide(): Promise<void> };
       };
       await SplashScreen.hide();

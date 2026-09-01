@@ -1,0 +1,13 @@
+# app-ads.txt — IAB Tech Lab authorised sellers for apps.
+#
+# This file must be reachable at the ROOT of the developer website you list
+# on the Play Store and App Store listings (https://<that-domain>/app-ads.txt).
+# Serving it from the game's own web build only works if the web build is
+# hosted on that exact domain.
+#
+# Without it, buyers cannot verify that Google is authorised to sell this
+# app's inventory. There is no error anywhere — bids are simply filtered out
+# and eCPM falls, which is why this is so often noticed months too late.
+#
+# AdMob takes 24-48 hours to crawl it after the store listing goes live.
+google.com, pub-4951837849307649, DIRECT, f08c47fec0942fa0

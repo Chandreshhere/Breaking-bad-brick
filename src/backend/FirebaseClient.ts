@@ -25,6 +25,8 @@ interface FirebaseConfig {
   appId: string;
   storageBucket?: string;
   messagingSenderId?: string;
+  /** Required by Firebase Analytics on web; absent everywhere else. */
+  measurementId?: string;
 }
 
 function readConfig(): FirebaseConfig | null {
@@ -52,6 +54,7 @@ function readConfig(): FirebaseConfig | null {
     authDomain,
     storageBucket: env['VITE_FIREBASE_STORAGE_BUCKET'] as string | undefined,
     messagingSenderId: env['VITE_FIREBASE_SENDER_ID'] as string | undefined,
+    measurementId: env['VITE_FIREBASE_MEASUREMENT_ID'] as string | undefined,
   };
 }
 
@@ -89,7 +92,18 @@ export function initFirebase(): Promise<FirebaseHandles | null> {
       ]);
       const app = initializeApp(config);
       const auth = authMod.getAuth(app);
-      const functions = fnMod.getFunctions(app, 'us-central1');
+
+      // Where the callable API lives.
+      //
+      // `getFunctions` takes either a region or a full origin, and the
+      // callable wire protocol is identical either way — so pointing this at
+      // a self-hosted server (Render, Fly, a VPS) is a one-variable change
+      // and no code here has to know the difference. That matters because
+      // Cloud Functions requires the paid Blaze plan while Firestore, Auth
+      // and App Check are all free; self-hosting the API is what keeps the
+      // rest of the backend on the free tier. See docs/RENDER.md.
+      const apiOrigin = import.meta.env['VITE_BACKEND_URL'] as string | undefined;
+      const functions = fnMod.getFunctions(app, apiOrigin?.replace(/\/+$/, '') || 'us-central1');
 
       // Point at the local emulator suite during development so no dev run
       // ever touches real data.

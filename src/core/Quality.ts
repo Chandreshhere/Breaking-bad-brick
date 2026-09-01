@@ -86,6 +86,12 @@ export class AdaptiveQuality {
     private onStepDown: (tier: QualityTier) => void
   ) {}
 
+  /** Smoothed frame time in ms — reported alongside a downgrade so you can
+   *  tell "barely missing 60" from "unplayable" in the field. */
+  get frameMs(): number {
+    return this.emaMs;
+  }
+
   frame(dtMs: number): void {
     // True pauses (tab switch, window drag) are not a load signal — ignore
     // them. Everything below that COUNTS, clamped so one hitch can't warp

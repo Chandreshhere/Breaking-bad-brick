@@ -4,7 +4,7 @@ import { requireUid, checkAppAttestation } from '../security/auth';
 import { type PlayerDoc } from '../domain/players/model';
 import { loadOrCreatePlayer } from '../domain/players/repo';
 import { dailyForDate, readAttempt } from '../domain/dailies/daily';
-import { APP_STATUS, DEFAULT_CONFIG, type AppStatus, type Tunables } from '../domain/config/tunables';
+import { resolveConfig, type AppStatus, type Tunables } from '../domain/config/tunables';
 import { MISSIONS } from '../domain/missions/missions';
 
 /**
@@ -53,11 +53,21 @@ export const bootstrap = onCall(
     const uid = requireUid(req);
     checkAppAttestation(req, 'bootstrap');
 
-    const country = (req.rawRequest.headers['x-appengine-country'] as string) ?? null;
+    // Country for the leaderboard flag. Every host names this differently and
+    // none of them is guaranteed: `x-appengine-country` is Google's,
+    // `cf-ipcountry` is Cloudflare's (which is what fronts a Render custom
+    // domain), and a bare *.onrender.com host sends neither. Null is a
+    // perfectly good answer — the leaderboard renders without a flag — so
+    // this must never be allowed to fail a launch.
+    const h = req.rawRequest.headers;
+    const country =
+      ((h['x-appengine-country'] ?? h['cf-ipcountry'] ?? h['x-vercel-ip-country']) as
+        | string
+        | undefined) ?? null;
     const player = await loadOrCreatePlayer(uid, country);
 
     const spec = dailyForDate(new Date());
-    const [attempt, progressSnap, catalogueSnap] = await Promise.all([
+    const [attempt, progressSnap, catalogueSnap, resolved] = await Promise.all([
       readAttempt(uid, spec.date),
       // The player's own progress. The *definitions* come from MISSIONS in
       // code — this used to query a top-level `missions` collection that
@@ -66,6 +76,10 @@ export const bootstrap = onCall(
       // while `claimMission` happily paid out against the code-side table.
       col.players().doc(uid).collection('missions').get(),
       col.catalogue().doc('cosmetics').get(),
+      // Remote Config, in parallel with the reads rather than before them,
+      // and served from a warm cache on all but the first call per instance.
+      // Its own timeout means the worst case adds ~1.5s, not an outage.
+      resolveConfig(),
     ]);
 
     const progress = new Map(progressSnap.docs.map((d) => [d.id, d.data()]));
@@ -84,7 +98,7 @@ export const bootstrap = onCall(
 
     return {
       player,
-      config: DEFAULT_CONFIG,
+      config: resolved.config,
       daily: {
         date: spec.date,
         seed: spec.seed,
@@ -94,7 +108,7 @@ export const bootstrap = onCall(
       },
       missions,
       catalogue: catalogueSnap.exists ? catalogueSnap.data() : null,
-      app: APP_STATUS,
+      app: resolved.app,
       serverTime: Date.now(),
     };
   }

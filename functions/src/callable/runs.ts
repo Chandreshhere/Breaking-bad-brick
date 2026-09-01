@@ -24,7 +24,7 @@ import {
 } from '../domain/leaderboards/boards';
 import { attemptRef, dailyForDate, dateKey, readAttempt } from '../domain/dailies/daily';
 import { MISSIONS, runValueFor, worldsUnlockedAt } from '../domain/missions/missions';
-import { DEFAULT_CONFIG } from '../domain/config/tunables';
+import { resolveConfig } from '../domain/config/tunables';
 import { TTL, ttlAt } from '../utils/ttl';
 
 const MODES = ['ENDLESS', 'DAILY'] as const;
@@ -128,6 +128,13 @@ export const submitRun = onCall(
         throw fail.badRequest(`Run rejected: ${verdict.reason}`);
       }
 
+      // Resolved OUTSIDE the transaction on purpose. A transaction body can
+      // be retried several times under contention, and a network call inside
+      // one is both slow and capable of returning different values on each
+      // attempt — which would mean the payout depended on how contended the
+      // write was.
+      const { config: tunables } = await resolveConfig();
+
       const ticketRef = col.runTickets().doc(runId);
       const playerRef = col.players().doc(uid);
 
@@ -184,7 +191,9 @@ export const submitRun = onCall(
         const player = playerFromSnapshot(playerSnap, uid);
 
         const verified = verification === 'VERIFIED';
-        let coins = coinsForRun(claim.score, DEFAULT_CONFIG.coinsPer100Points, verified);
+        // Must be the SAME resolution bootstrap advertised, or the client
+        // is told one payout rate and paid another.
+        let coins = coinsForRun(claim.score, tunables.coinsPer100Points, verified);
 
         const next: PlayerDoc = structuredClone(player);
 
