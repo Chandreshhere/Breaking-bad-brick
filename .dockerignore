@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+functions/node_modules
+npm-debug.log
+package-lock.json
+functions/package-lock.json
+
+# Build outputs (will be built in Docker)
+dist
+functions/lib
+
+# Development files
+.git
+.gitignore
+.vscode
+.firebaserc
+firebase.json
+firestore.indexes.json
+firestore.rules
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Documentation
+README.md
+LICENSE.md
+docs
+
+# Mobile builds
+android
+ios
+capacitor.config.ts
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__
+
+# CI/CD
+.github
+
+# Vercel
+.vercel
+
+# Logs
+*.log
+logs
+
+# OS files
+.DS_Store
+Thumbs.db

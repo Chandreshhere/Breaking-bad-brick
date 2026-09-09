@@ -3,8 +3,10 @@ dist
 .DS_Store
 
 # local secrets / emulator config
+.env
 .env.local
 .env*.local
+.env.production
 functions/lib
 functions/node_modules
 

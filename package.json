@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node init && vite",
+    "build": "node init && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "emulators": "firebase emulators:start --project demo-bbb --only auth,firestore,functions",
@@ -17,7 +17,12 @@
     "cap:sync": "npm run build && npx cap sync",
     "android:build": "JAVA_HOME=\"$(test -d /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home && echo /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home || echo $JAVA_HOME)\" npm run cap:sync && cd android && JAVA_HOME=\"$(test -d /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home && echo /Applications/Android\\ Studio.app/Contents/jbr/Contents/Home || echo $JAVA_HOME)\" ./gradlew assembleDebug",
     "android:open": "npx cap open android",
-    "ios:open": "npx cap open ios"
+    "ios:open": "npx cap open ios",
+    "docker:build": "docker build -t breaking-bad-brick .",
+    "docker:run": "docker run -p 8080:8080 --env-file .env breaking-bad-brick",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
