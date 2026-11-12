@@ -3,10 +3,7 @@ dist
 .DS_Store
 
 # local secrets / emulator config
-.env
-.env.local
 .env*.local
-.env.production
 functions/lib
 functions/node_modules
 
@@ -17,7 +14,5 @@ functions/node_modules
 # Firebase native config carries project ids; keep it out of a public repo
 android/app/google-services.json
 ios/App/App/GoogleService-Info.plist
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
 .gitignore
+config.bat
