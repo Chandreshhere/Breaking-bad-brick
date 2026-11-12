@@ -3,9 +3,11 @@
   "private": true,
   "type": "commonjs",
   "main": "lib/index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "node init && tsc",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
