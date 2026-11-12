@@ -3,7 +3,6 @@ dist
 .DS_Store
 
 # local secrets / emulator config
-.env.local
 .env*.local
 functions/lib
 functions/node_modules
@@ -23,7 +22,5 @@ ios/App/App/GoogleService-Info.plist
 *serviceAccount*.json
 *service-account*.json
 *-firebase-adminsdk-*.json
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
 .gitignore
+config.bat
