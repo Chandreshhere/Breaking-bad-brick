@@ -7,15 +7,15 @@
     "node": "22"
   },
   "scripts": {
-    "build": "node init && tsc",
+    "build": "tsc",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
     "deploy:dev": "npm run build && firebase deploy --only functions -P dev",
     "deploy:staging": "npm run build && firebase deploy --only functions -P staging",
     "deploy:prod": "npm run build && firebase deploy --only functions -P prod",
-    "start": "node init && node lib/server.js",
-    "dev:server": "node init && npm run build && node lib/server.js",
+    "start": "node lib/server.js",
+    "dev:server": "npm run build && node lib/server.js",
     "aws:build": "sam build",
     "aws:deploy": "sam build && sam deploy --guided"
   },
