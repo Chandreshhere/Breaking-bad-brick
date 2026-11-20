@@ -32,10 +32,8 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@sentry/browser": "^10.73.0",
-    "dotenv": "^8.2.0",
     "firebase": "^12.17.1",
     "lil-gui": "^0.20.0",
-    "node-fetch": "^3.3.2",
     "three": "^0.180.0"
   },
   "devDependencies": {
